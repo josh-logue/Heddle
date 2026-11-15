@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.json.tmp
+.pytest_cache/
+
+# Local notes for Claude (not committed)
+CLAUDE.md
+
+# Internal plans and review notes (kept local, not published)
+docs/plans/

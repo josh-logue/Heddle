@@ -1,0 +1,15 @@
+# Lint settings: run `.venv\Scripts\python.exe -m ruff check .`
+line-length = 120
+target-version = "py313"
+extend-exclude = [".venv"]
+
+[lint]
+# pycodestyle errors/warnings, pyflakes (unused or undefined names), bugbear (likely bugs)
+select = ["E", "W", "F", "B"]
+ignore = [
+    "B905",  # zip() without strict=: the code zips lists with their own tails on purpose
+    "B008",  # calls in argument defaults: only immutable Qt values (QSize, QPointF) are used
+]
+
+[lint.per-file-ignores]
+"warpingweft/theme.py" = ["E501"]  # long lines inside Qt stylesheet strings

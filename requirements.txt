@@ -1,0 +1,4 @@
+# Exact version the app is tested with. Upgrade on purpose: change it, reinstall, run the tests.
+# Only Qt's core modules (Core, Gui, Widgets, Svg): all LGPL, and a fraction of the size of
+# the full PySide6 package, whose add-ons (WebEngine, Charts, ...) the app doesn't use.
+PySide6-Essentials==6.12.0
