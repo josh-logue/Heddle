@@ -402,7 +402,8 @@ def test_pending_nudge_does_not_leak_into_a_new_board(window, qapp):
     window.scene.nudge_selected(10, 0)
     window.setWindowModified(False)
     window.new_board()
-    QTest.qWait(sc.NUDGE_SETTLE_MS + 100)
+    assert not window.scene._nudge_timer.isActive()   # the burst can't settle into the new board
+    QApplication.processEvents()
     assert not window.isWindowModified()
 
 

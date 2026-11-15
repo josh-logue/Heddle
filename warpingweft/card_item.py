@@ -146,6 +146,7 @@ class CardItem(QGraphicsItem):
         self._height = HEADER_HEIGHT + 40
         self._header_area_h = HEADER_HEIGHT  # groups: height of header+tags+details
         self._closed_h = self._height  # cards: height with details hidden (see anchor_scene_rect)
+        self._drawn_size: tuple[float, float] | None = None  # size when last laid out
         self._collapsed_header_h = HEADER_HEIGHT  # groups: the same with details hidden
         self._member_count = 0
         # (rect, text, font, role) where role is "text" or "muted"; resolved at paint time
@@ -580,6 +581,11 @@ class CardItem(QGraphicsItem):
         for edge in self.edges:
             edge.adjust()
         scene = self.scene()
+        size = (self._width, self._height)
+        if size != self._drawn_size:  # e.g. not for a text edit that keeps the size
+            self._drawn_size = size
+            if scene is not None and hasattr(scene, "card_resized"):
+                scene.card_resized(self)
         if self.collapsed and scene is not None and hasattr(scene, "folded_edges"):
             for edge in scene.folded_edges(self):  # they meet this folded frame
                 if edge.isVisible():

@@ -60,6 +60,7 @@ def test_h_toggles_paths_for_the_selected_card(window):
     c["B"].setSelected(True)
     window.act_paths.trigger()
     assert s.highlight_owner() == "paths" and "“B”" in s.highlight_label()
+    assert s.highlight.focus == c["B"].card.id
     window.act_paths.trigger()                 # again: off
     assert not s.has_highlight()
 

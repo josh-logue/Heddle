@@ -65,10 +65,16 @@ class CardPanel(QWidget):
         self._timer.setSingleShot(True)
         self._timer.setInterval(COMMIT_DELAY_MS)
         self._timer.timeout.connect(self.commit)
+        # Selection changes often come in bursts (paste, undo, Story Checks results each
+        # select card by card): the panel follows once the burst is over.
+        self._selection_timer = QTimer(self)
+        self._selection_timer.setSingleShot(True)
+        self._selection_timer.setInterval(0)
+        self._selection_timer.timeout.connect(self._follow_selection)
         scene.selectionChanged.connect(self._on_selection)
         scene.modified.connect(self.refresh)
         scene.history_changed.connect(self.refresh)
-        self._on_selection()
+        self._follow_selection()
 
     # ----- which card -------------------------------------------------------------------
     def selected_cards(self) -> list[CardItem]:
@@ -81,7 +87,14 @@ class CardPanel(QWidget):
         return self.scene.cards.get(self.card_id) if self.card_id else None
 
     def _on_selection(self) -> None:
-        self.commit()  # what was typed for the last card is kept before switching
+        # What was typed for the last card is kept before switching. Only typing still
+        # waiting to be saved: the panel catches up a moment later, so meanwhile (e.g.
+        # an undo rebuilding the board) its fields can be out of date, not newly typed.
+        if self._timer.isActive():
+            self.commit()
+        self._selection_timer.start()
+
+    def _follow_selection(self) -> None:
         cards = self.selected_cards()
         self.card_id = cards[0].card.id if len(cards) == 1 else None
         self._rebuild()

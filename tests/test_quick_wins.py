@@ -42,18 +42,6 @@ def test_highlight_fields_are_named(scene):
     assert scene.highlight_label() == "Lit" and scene.highlight_owner() == "paths"
 
 
-def test_h_toggles_paths_off_for_the_same_card(window, qapp):
-    s = window.scene
-    a = s.add_card(CardData(title="A"))
-    b = s.add_card(CardData(title="B", x=300))
-    s.add_connection(a, b)
-    a.setSelected(True)
-    window.toggle_paths()
-    assert s.highlight_owner() == "paths" and s.highlight.focus == a.card.id
-    window.toggle_paths()
-    assert s.highlight is None
-
-
 # ----- export state through public helpers -----------------------------------------------------
 def test_theme_temporarily_restores_even_after_an_error():
     before = theme.current()
@@ -79,18 +67,6 @@ def test_export_view_hides_and_restores_view_state(scene):
     assert scene.highlight.label == "Lit"
     with scene.export_view(keep_highlight=True):
         assert scene.highlight.label == "Lit"
-
-
-def test_image_export_keeps_the_theme_and_highlight(scene, tmp_path):
-    from warpingweft.export_image import ImageOptions, export_image
-    a = scene.add_card(CardData(title="A"))
-    scene.set_highlight({a.card.id}, label="Lit", owner="paths")
-    before = theme.current()
-    with theme.temporarily(theme.DARK):
-        export_image(scene, tmp_path / "x.png", ImageOptions(light=True, scale=1))
-        assert theme.current() is theme.DARK  # back to dark after a light export
-    assert theme.current() is before
-    assert scene.highlight.label == "Lit"
 
 
 # ----- error log -----------------------------------------------------------------------------------

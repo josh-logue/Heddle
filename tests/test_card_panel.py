@@ -17,9 +17,11 @@ def panel(window, qapp):
 
 
 def select(scene, *items):
+    from PySide6.QtWidgets import QApplication
     scene.clearSelection()
     for i in items:
         i.setSelected(True)
+    QApplication.processEvents()  # the panel follows once the selection burst is over
 
 
 def test_it_follows_the_selection(window, panel):
@@ -32,7 +34,7 @@ def test_it_follows_the_selection(window, panel):
     assert panel.title_edit.text() == "Second"
     select(s, a, b)
     assert panel.heading.text() == "2 cards selected" and panel.dialog_btn.text() == "Edit 2 Cards…"
-    s.clearSelection()
+    select(s)
     assert panel.heading.text() == "No card selected"
 
 

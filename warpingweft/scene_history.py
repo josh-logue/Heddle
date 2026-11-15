@@ -196,6 +196,8 @@ class HistoryMixin:
         self.custom_colors.clear()
         self.setSceneRect(BASE_SCENE_RECT)
         self._moving = False
+        self._reroute_wanted = False
+        self._routed_shape = None
         self.saved_values = {}
         self.display = dict(DISPLAY_DEFAULTS)
         self.routes = {}
@@ -261,6 +263,10 @@ class HistoryMixin:
                 e.adjust()
         self.apply_collapse()  # folded groups hide their cards, and arrows meet the folds
         self.update_scene_rect()
+        if self.display.get("arrow_routing") == "avoid":
+            # Every arrow was just routed against the finished board, so the re-route
+            # the change signal schedules (undo, redo, opening) has nothing to do.
+            self._note_routed()
         if not self._restoring:
             # (Undo/redo signal a change straight after rebuilding, which works the
             # introductions out; doing it here as well would do it twice.)

@@ -5,12 +5,11 @@ import time
 
 from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-import warpingweft.scene as sc
 from warpingweft.edge_item import AVOID_SAMPLES
 from warpingweft.model import CardData
+from conftest import wait_until
 
 
 def crosses(edge, item) -> bool:
@@ -30,8 +29,10 @@ def blocked_board(scene):
     return a, b, blocker, edge
 
 
-def settle(ms):
-    QTest.qWait(ms)
+def settled(scene) -> None:
+    """Wait until moves, nudge bursts and the re-route they schedule are all over."""
+    wait_until(lambda: not scene.is_moving() and not scene._nudge_timer.isActive()
+               and not scene._reroute_timer.isActive())
 
 
 def test_plain_curves_while_moving_then_routed_around(scene):
@@ -40,13 +41,13 @@ def test_plain_curves_while_moving_then_routed_around(scene):
     b.moveBy(0, 5)                           # a drag step
     assert crosses(edge, blocker)            # plain curve: straight through, for now
     scene.end_move()
-    settle(sc.REROUTE_DELAY_MS + 100)
+    settled(scene)
     assert not crosses(edge, blocker)
 
 
 def test_a_click_without_moving_does_not_reroute(scene):
     a, b, blocker, edge = blocked_board(scene)
-    settle(sc.REROUTE_DELAY_MS + 100)        # let switching modes finish its own re-route
+    settled(scene)                           # let switching modes finish its own re-route
     assert not scene._reroute_timer.isActive()
     scene.begin_move()
     scene.end_move(moved=False)
@@ -59,7 +60,7 @@ def test_nudges_route_simply_until_the_burst_settles(scene):
     b.setSelected(True)
     scene.nudge_selected(0, 10)
     assert scene.is_moving() and crosses(edge, blocker)
-    settle(sc.NUDGE_SETTLE_MS + sc.REROUTE_DELAY_MS + 150)
+    settled(scene)
     assert not scene.is_moving() and not crosses(edge, blocker)
     assert scene.history.can_undo()          # still one undo step for the burst
 
@@ -90,7 +91,7 @@ def test_a_real_mouse_drag(window, qapp):
     assert s.is_moving() and crosses(edge, blocker)
     send(QEvent.Type.MouseButtonRelease, end, Qt.MouseButton.NoButton)
     assert not s.is_moving()
-    settle(sc.REROUTE_DELAY_MS + 100)
+    settled(s)
     assert not crosses(edge, blocker)
 
 

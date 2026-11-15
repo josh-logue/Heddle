@@ -22,6 +22,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from functools import cached_property
 
 from .model import KIND_GROUP, KIND_STRAND, CardData, ConnectionData
 
@@ -92,10 +93,11 @@ class Route:
     card, or a loop's cards in story order (a loop is one stop, as when counting)."""
     stops: tuple[tuple[str, ...], ...]
 
-    @property
+    @cached_property
     def key(self) -> tuple[str, ...]:
         """Identifies the route across edits: a stop's card id, or a loop's ids
-        sorted and joined with LOOP_JOIN."""
+        sorted and joined with LOOP_JOIN. Worked out once: the Routes panel reads
+        it many times per refresh."""
         return tuple(s[0] if len(s) == 1 else LOOP_JOIN.join(sorted(s)) for s in self.stops)
 
     @property

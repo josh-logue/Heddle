@@ -85,8 +85,15 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixi
         self._reroute_timer = QTimer(self)
         self._reroute_timer.setSingleShot(True)
         self._reroute_timer.setInterval(REROUTE_DELAY_MS)
-        self._reroute_timer.timeout.connect(self.reroute_arrows)
+        self._reroute_timer.timeout.connect(self._reroute_if_needed)
         self.modified.connect(self._schedule_reroute)
+        # "Avoiding cards" routing is slow (a search per arrow), so the board is routed
+        # again only if it may have changed shape since every arrow was last routed:
+        # the shape then, and whether any card has moved or resized since (even if it
+        # went back: arrows touching it were drawn against the shape in between).
+        self._routed_shape: tuple | None = None
+        self._routes_dirty = False
+        self._reroute_wanted = False  # a change arrived mid-move: route when it ends
         # Characters each card introduces (worked out from the arrows, not saved), kept
         # up to date on every change; and the character thread being shown, if any.
         self.introductions: dict[str, list[str]] = {}
@@ -1018,7 +1025,8 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixi
         (unless nothing actually moved, e.g. a click to select)."""
         if self._moving:
             self._moving = False
-            if moved:
+            wanted, self._reroute_wanted = self._reroute_wanted, False
+            if moved or wanted:
                 self._schedule_reroute()
 
     def is_moving(self) -> bool:
@@ -1043,7 +1051,37 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixi
 
     def _schedule_reroute(self) -> None:
         if self.display.get("arrow_routing") == "avoid" and self.edges:
-            self._reroute_timer.start()
+            if self._moving:
+                # Arrows are drawn plainly until the move ends, and end_move routes them
+                # then: a pass now (e.g. mid-way through a burst of nudges) is wasted.
+                self._reroute_wanted = True
+            else:
+                self._reroute_timer.start()
+
+    def _reroute_if_needed(self) -> None:
+        """The board settled with "avoid cards" on: route every arrow again, unless
+        nothing that routes depend on has changed since they were last all routed
+        (an edit to a card's text, tags or colour that leaves its size alone)."""
+        if self._routes_dirty or self._routing_shape() != self._routed_shape:
+            self.reroute_arrows()
+
+    def _routing_shape(self) -> tuple:
+        """Everything arrow routes depend on: where each card is drawn and how big,
+        whether it shows, what it's in, the arrows themselves and the board's options."""
+        cards = tuple((cid, item.isVisible(), item.card.parent, item.card.arrange_vertical,
+                       item.anchor_scene_rect().getRect())
+                      for cid, item in self.cards.items())
+        edges = tuple((e.conn.id, e.source.card.id, e.target.card.id, e.conn.label) for e in self.edges)
+        return cards, edges, tuple(sorted(self.display.items()))
+
+    def _note_routed(self) -> None:
+        """Every arrow has just been routed against the board as it is."""
+        self._routed_shape = self._routing_shape()
+        self._routes_dirty = False
+
+    def card_resized(self, item: CardItem) -> None:
+        """A card's drawn size changed: arrows may need to go round it differently."""
+        self._routes_dirty = True
 
     def reroute_arrows(self) -> None:
         """Recompute every arrow's path (after a routing change, or once the board
@@ -1051,6 +1089,8 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixi
         self._reroute_timer.stop()
         for edge in self.edges:
             edge.adjust()
+        if not self._moving:  # (while moving, arrows were drawn plainly)
+            self._note_routed()
 
     def set_arrow_style(self, edges, style: str | None = None, color: str | None = None,
                         label: str | None = None) -> int:
@@ -1282,6 +1322,7 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixi
     def card_moved(self, item: CardItem) -> None:
         """A card moved (drag, nudge, arrange): the thread line through it follows,
         redrawn once per burst of moves rather than once per card."""
+        self._routes_dirty = True  # an arrow may now need to go round it, or no longer
         if self._thread_line is not None and not self._thread_line_due \
                 and item.card.id in self._thread_ids:
             self._thread_line_due = True
@@ -1482,8 +1523,13 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixi
                 for item in moved:
                     item.moveBy(dx, dy)
         self._refit_ids({i.card.parent for i in moved} - {""})
-        self.modified.emit()          # mark the window unsaved now...
-        self._nudge_timer.start()     # ...and record the undo step once the burst ends
+        if not self._nudge_timer.isActive():
+            # Mark the window unsaved now, once per burst: every listener (story graph,
+            # introductions, panels) catches up when the burst settles, not on each step.
+            self.modified.emit()
+        else:
+            self.update_scene_rect()  # (cheap) a card nudged far out keeps its full margin
+        self._nudge_timer.start()     # record the undo step once the burst ends
         return True
 
     def edit_selection(self) -> bool:

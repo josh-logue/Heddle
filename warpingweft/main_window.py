@@ -9,7 +9,7 @@ from pathlib import Path
 
 import shiboken6
 from PySide6.QtCore import QEvent, QMimeData, QObject, QPoint, QPointF, QStandardPaths, Qt, QTimer
-from PySide6.QtGui import QAction, QActionGroup, QCursor, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QCursor, QKeySequence, QPainterPath
 from PySide6.QtWidgets import (
     QApplication, QDockWidget, QFileDialog, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox, QSizePolicy,
     QToolButton, QWidget,
@@ -1042,9 +1042,12 @@ class MainWindow(QMainWindow):
         self.scene.create_card_at(self.view.mapToScene(self.view.viewport().rect().center()))
 
     def _select_all(self) -> None:
-        for item in self.scene.items():
-            if item.flags() & item.GraphicsItemFlag.ItemIsSelectable:
-                item.setSelected(True)
+        """Every card, group and arrow on show, as one selection change (selecting them
+        one by one signalled once per item, and every listener rescanned the selection)."""
+        area = QPainterPath()
+        area.addRect(self.scene.itemsBoundingRect().united(self.scene.sceneRect()))
+        self.scene.setSelectionArea(area, Qt.ItemSelectionOperation.ReplaceSelection,
+                                    Qt.ItemSelectionMode.IntersectsItemBoundingRect)
 
     def show_settings(self) -> None:
         SettingsDialog(self).exec()

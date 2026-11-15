@@ -1,13 +1,13 @@
 """F6: arrow line styles and colors, the arrow editor, and curved / card-avoiding routing."""
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import QPainterPath
-from PySide6.QtTest import QTest
 
 import warpingweft.arrow_dialog as ad
 import warpingweft.scene as sc
 from warpingweft import theme
 from warpingweft.edge_item import AVOID_SAMPLES
 from warpingweft.model import KIND_GROUP, CardData, save_board
+from conftest import wait_until
 
 
 def two_cards(scene, dx=600, dy=0):
@@ -165,7 +165,7 @@ def test_avoid_reroutes_after_a_card_moves_into_the_way(window, qapp):
     s.set_display_option("arrow_routing", "avoid")
     stray.setPos(350, 10)            # dragged into the arrow's path
     s.handle_drop(stray)
-    QTest.qWait(sc.REROUTE_DELAY_MS + 100)
+    wait_until(lambda: not s._reroute_timer.isActive())
     assert not crosses(e._line, stray.card_scene_rect())
 
 

@@ -72,18 +72,6 @@ def test_failed_autosave_retries_with_backoff(window, tmp_path, monkeypatch, qap
     assert window._autosave_timer.interval() == mw.AUTOSAVE_MS
 
 
-def test_unnamed_board_autosaves_a_recovery_copy_not_a_document(window, qapp):
-    """Untitled boards no longer become Documents/NewBoard-N.json (see test_recovery.py)."""
-    window.act_autosave.setChecked(True)
-    window.scene.add_card(CardData(title="A"))
-    window.scene.mark_modified()
-    qapp.processEvents()
-    window._autosave()
-    assert window.current_path is None and window.isWindowModified()
-    assert window._recovery is not None and window._recovery.path.exists()
-    assert not list(window._documents_dir().glob("*.json"))
-
-
 # ----- backups & changes on disk ----------------------------------------------------------
 @pytest.fixture
 def opened(window, tmp_path):
