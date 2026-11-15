@@ -27,7 +27,7 @@ def test_menu_bar_hidden_and_every_item_in_the_menu_button(window, qapp):
     window.show()
     qapp.processEvents()
     assert not window.menuBar().isVisible()
-    assert [a.text() for a in window.main_menu.actions()] == ["&File", "&Edit", "&View", "&Help"]
+    assert [a.text() for a in window.main_menu.actions()] == ["&File", "&Edit", "&Card", "&View", "&Help"]
     reachable = set(map(id, all_actions(window.main_menu)))
     missing = [a.text() for a in bar_actions(window) if id(a) not in reachable and not a.isSeparator()]
     assert missing == []

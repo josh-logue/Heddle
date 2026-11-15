@@ -42,11 +42,12 @@ from .scene_history import HistoryMixin
 from .scene_strands import StrandsMixin
 from .scene_room import RoomMixin
 from .scene_menus import MenusMixin
+from .scene_commands import CommandsMixin
 
 
 
 
-class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, QGraphicsScene):
+class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixin, QGraphicsScene):
     modified = Signal()
     value_renamed = Signal(str, str, str)  # field, old value, new value
     history_changed = Signal()  # undo/redo availability or saved-state changed
@@ -78,6 +79,7 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, QGraphicsSce
         # (no background), or None (normal drawing).
         self.export_background: str | None = None
         self._highlight: Highlight | None = None  # the highlight showing, if any
+        self._paths_mode = "both"  # the last path highlight's direction (Shift+H steps it)
         self._graph: StoryGraph | None = None  # built on demand; dropped on every change
         self.modified.connect(self._forget_graph)
         self._reroute_timer = QTimer(self)
@@ -1172,6 +1174,7 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, QGraphicsSce
         what = {"both": "Paths through", "before": "What leads to", "after": "What follows"}[mode]
         label = f"{what} “{title}” · {parts}"
         self.set_highlight(ids, edges, cid, label, owner="paths")
+        self._paths_mode = mode
         return label
 
     # ----- characters: introductions & threads ----------------------------------

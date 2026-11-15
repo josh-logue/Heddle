@@ -120,7 +120,7 @@ def test_story_tools_off_hides_story_features(window, qapp):
     assert not window.checks_dock.isVisible()
     menu = QMenu()
     s._add_path_actions(menu, a)
-    labels = [x.text() for x in menu.actions()]
+    labels = [x.text().split("\t")[0] for x in menu.actions()]  # (the key follows a tab)
     assert "Read from here" not in labels and "Not part of the story" not in labels
     s.undo()  # undoable like any board option
     qapp.processEvents()
@@ -171,7 +171,7 @@ def test_flag_from_the_menu_is_undoable_and_drawn_dashed(scene, settle):
     settle()
     menu = QMenu()
     scene._add_path_actions(menu, a)
-    toggle = next(x for x in menu.actions() if x.text() == "Not part of the story")
+    toggle = next(x for x in menu.actions() if x.text().startswith("Not part of the story\t"))
     assert not toggle.isChecked()
     toggle.trigger()
     settle()

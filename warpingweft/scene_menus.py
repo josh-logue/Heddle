@@ -3,6 +3,7 @@ from __future__ import annotations
 
 
 from PySide6.QtCore import QPointF
+from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QMenu,
 )
@@ -14,35 +15,47 @@ from .edge_item import EdgeItem
 from .model import (
     ARROW_STYLES, CARD_COLORS, COLOR_NAMES,
 )
+from .shortcuts import ENTER, ESC, KEYS, menu_text as k
 from .widgets import swatch_icon
+
+STD = QKeySequence.StandardKey
 
 
 
 class MenusMixin:
-    """Part of BoardScene: it uses the scene's own attributes and methods."""
+    """Part of BoardScene: it uses the scene's own attributes and methods.
+
+    Items that have a keyboard shortcut show it (k(): the key after a tab, from
+    shortcuts.KEYS). The menu acts on the item clicked, the key on the selection, which
+    is the same thing once the clicked card is selected (_add_clipboard_actions does that)."""
 
     def contextMenuEvent(self, event) -> None:
         if self._suppress_menu or self._click_connecting:
             self._suppress_menu = False
             event.accept()
             return
-        item = self._item_at(event.scenePos())
-        pos = event.scenePos()
+        menu = self.build_context_menu(self._item_at(event.scenePos()), event.scenePos())
+        menu.exec(event.screenPos())
+        event.accept()
+
+    def build_context_menu(self, item, pos: QPointF) -> QMenu:
+        """The right-click menu for `item` (a card, group, arrow or None for the canvas)
+        at scene position `pos`. Separate from showing it, so tests can look inside."""
         menu = QMenu()
         if isinstance(item, CardItem) and item.is_group:
-            menu.addAction("Edit group…", lambda: self.edit_card(item))
+            menu.addAction(k("Edit group…", ENTER), lambda: self.edit_card(item))
             # Acts on every selected group when this one is part of the selection.
             folding = ([g for g in self.selectedItems() if isinstance(g, CardItem) and g.is_group]
                        if item.isSelected() else [item])
-            menu.addAction("Expand group" if item.collapsed else "Collapse group",
+            menu.addAction(k("Expand group" if item.collapsed else "Collapse group", KEYS["collapse"]),
                            lambda: self.set_collapsed(folding, not item.collapsed))
-            menu.addAction("Hide details" if item.details_visible else "Show details",
+            menu.addAction(k("Hide details" if item.details_visible else "Show details", KEYS["details"]),
                            lambda: self.show_details(item, not item.details_visible))
-            menu.addAction("Connect to…", lambda: self.start_click_connection(item))
+            menu.addAction(k("Connect to…", KEYS["connect"]), lambda: self.start_click_connection(item))
             self._add_path_actions(menu, item)
             menu.addAction("Add card here", lambda: self.create_card_at(pos, group=item))
             self._add_clipboard_actions(menu, item, pos)
-            arrange_act = menu.addAction("Auto-arrange cards",
+            arrange_act = menu.addAction(k("Auto-arrange cards", KEYS["arrange"]),
                                          lambda: (self.auto_arrange_group(item), self.mark_modified()))
             arrange_act.setEnabled(bool(self.members_of(item)))
             color_act = menu.addAction("Rows by color when arranging")
@@ -70,15 +83,15 @@ class MenusMixin:
                            lambda: (self.release_members(item), self.mark_modified()))
             menu.addAction("Delete group (keep cards)",
                            lambda: (self.remove_card(item), self.mark_modified()))
-            menu.addAction("Delete group and its cards", lambda: self.delete_group_with_contents(item))
+            menu.addAction(k("Delete group and its cards", STD.Delete), lambda: self.delete_group_with_contents(item))
         elif isinstance(item, CardItem):
             if item.is_strand:
                 menu.addAction("Show in Strands",
                                lambda: self.strand_card_opened.emit(item.card.strand_kind, item.card.strand))
-            menu.addAction("Edit card…", lambda: self.edit_card(item))
-            menu.addAction("Hide details" if item.details_visible else "Show details",
+            menu.addAction(k("Edit card…", ENTER), lambda: self.edit_card(item))
+            menu.addAction(k("Hide details" if item.details_visible else "Show details", KEYS["details"]),
                            lambda: self.show_details(item, not item.details_visible))
-            menu.addAction("Connect to…", lambda: self.start_click_connection(item))
+            menu.addAction(k("Connect to…", KEYS["connect"]), lambda: self.start_click_connection(item))
             if not item.is_strand:  # (strand cards are outside the story)
                 self._add_path_actions(menu, item)
             self._add_clipboard_actions(menu, item, pos)
@@ -86,13 +99,13 @@ class MenusMixin:
             if self.parent_of(item) is not None:
                 menu.addAction("Remove from group",
                                lambda: (self.remove_from_group(item), self.mark_modified()))
-            menu.addAction("Delete card", lambda: (self.remove_card(item), self.mark_modified()))
+            menu.addAction(k("Delete card", STD.Delete), lambda: (self.remove_card(item), self.mark_modified()))
         elif isinstance(item, EdgeItem):
             # Right-clicking one of several selected arrows acts on all of them.
             targets = [e for e in self.selectedItems() if isinstance(e, EdgeItem)] \
                 if item.isSelected() else [item]
             n = len(targets)
-            menu.addAction("Edit arrow…" if n == 1 else f"Edit {n} arrows…",
+            menu.addAction(k("Edit arrow…" if n == 1 else f"Edit {n} arrows…", ENTER),
                            lambda: self.edit_arrows(targets))
             style_menu = menu.addMenu("Line style")
             for key in ARROW_STYLES:
@@ -112,16 +125,15 @@ class MenusMixin:
             color_menu.addSeparator()
             color_menu.addAction("Custom…", lambda: self.edit_arrows(targets))
             menu.addSeparator()
-            menu.addAction("Reverse direction" if n == 1 else f"Reverse {n} arrows",
+            menu.addAction(k("Reverse direction" if n == 1 else f"Reverse {n} arrows", KEYS["reverse"]),
                            lambda: [self.reverse_edge(e) for e in list(targets)])
             menu.addSeparator()
-            menu.addAction("Delete connection" if n == 1 else f"Delete {n} connections",
+            menu.addAction(k("Delete connection" if n == 1 else f"Delete {n} connections", STD.Delete),
                            lambda: (self.remove_edges(targets), self.mark_modified()))
         else:
             menu.addAction("Add card here", lambda: self.create_card_at(pos))
             self._add_clipboard_actions(menu, None, pos)
-        menu.exec(event.screenPos())
-        event.accept()
+        return menu
 
     def _add_clipboard_actions(self, menu: QMenu, item: CardItem | None, pos: QPointF) -> None:
         """Copy / Duplicate for the clicked card (and the rest of the selection, if it's
@@ -134,29 +146,30 @@ class MenusMixin:
             n = sum(1 for i in self.selectedItems() if isinstance(i, CardItem))
             suffix = f" {n} cards" if n > 1 else ""
             if n > 1:
-                menu.addAction(f"Edit {n} selected cards…", self.edit_selected_cards)
-            menu.addAction(f"Copy{suffix}", self.copy_requested.emit)
-            menu.addAction(f"Duplicate{suffix}", self.duplicate_selected)
-        paste = menu.addAction("Paste here", lambda: self.paste_requested.emit(pos))
+                menu.addAction(k(f"Edit {n} selected cards…", ENTER), self.edit_selected_cards)
+            menu.addAction(k(f"Copy{suffix}", STD.Copy), self.copy_requested.emit)
+            menu.addAction(k(f"Duplicate{suffix}", KEYS["duplicate"]), self.duplicate_selected)
+        # (Ctrl+V pastes at the mouse pointer too, so "here" holds for the key as well.)
+        paste = menu.addAction(k("Paste here", STD.Paste), lambda: self.paste_requested.emit(pos))
         paste.setEnabled(self.can_paste())
 
     def _add_path_actions(self, menu: QMenu, item: CardItem) -> None:
         sub = menu.addMenu("Highlight paths")
-        sub.addAction("Before and after (H)", lambda: self.highlight_paths(item, "both"))
+        sub.addAction(k("Before and after", KEYS["paths"]), lambda: self.highlight_paths(item, "both"))
         sub.addAction("Only what leads here", lambda: self.highlight_paths(item, "before"))
         sub.addAction("Only what follows", lambda: self.highlight_paths(item, "after"))
         if not self.display.get("story_tools", True):
             if self._highlight is not None:
-                menu.addAction("Clear highlight", self.clear_highlight)
+                menu.addAction(k("Clear highlight", ESC), self.clear_highlight)
             return
-        outside = menu.addAction("Not part of the story",
+        outside = menu.addAction(k("Not part of the story", KEYS["outside_story"]),
                                  lambda: self.set_outside_story(item, not item.card.outside_story))
         outside.setCheckable(True)
         outside.setChecked(item.card.outside_story)
-        menu.addAction("Read from here", lambda: self.read_requested.emit(item))
+        menu.addAction(k("Read from here", KEYS["read"]), lambda: self.read_requested.emit(item))
         if item.card.characters:
             threads = menu.addMenu("Character thread")
             for name in item.card.characters:
                 threads.addAction(name, lambda n=name: self.show_thread(n))
         if self._highlight is not None:
-            menu.addAction("Clear highlight", self.clear_highlight)
+            menu.addAction(k("Clear highlight", ESC), self.clear_highlight)

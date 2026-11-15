@@ -40,6 +40,7 @@ from .help_dialog import HelpDialog
 from .path_reader import PathReader
 from .recovery import RecoveryFile, orphans
 from .search_bar import SearchBar
+from .shortcuts import KEYS
 from .settings_dialog import SettingsDialog
 from .values_dialog import COLORS_KEY, ValueChecklistDialog
 from .scene import BoardScene
@@ -251,7 +252,7 @@ class MainWindow(QMainWindow):
         self.menu_peek = MenuPeek(self)  # Alt shows the hidden menu bar
         self._canvas_only_shortcuts(
             self.act_delete, self.act_select_all, self.act_cut, self.act_copy, self.act_paste,
-            self.act_duplicate, self.act_edit_selected, self.act_paths)
+            self.act_duplicate, self.act_edit_selected, self.act_paths, *self.card_actions)
         self.act_snap.setChecked(self.scene.snap_to_grid)  # settings were applied before the menus existed
         self.scene.modified.connect(self._schedule_autosave)
         self._search_current: str | None = None  # id of the search match last jumped to
@@ -409,7 +410,7 @@ class MainWindow(QMainWindow):
         # (A lambda: the action's "checked" flag mustn't reach paste() as a position.)
         self.act_paste = self._action("&Paste", lambda: self.paste(), K.Paste,
                                       "Paste copied cards at the mouse pointer")
-        self.act_duplicate = self._action("D&uplicate", self.scene.duplicate_selected, "Ctrl+D",
+        self.act_duplicate = self._action("D&uplicate", self.scene.duplicate_selected, KEYS["duplicate"],
                                           "Copy the selected cards right next to them")
         self.act_find = self._action("&Find…", lambda: self.search_bar.focus(), K.Find,
                                      "Search card titles, descriptions and notes")
@@ -418,7 +419,7 @@ class MainWindow(QMainWindow):
         self.act_replace = self._action("&Replace…", lambda: self.scene.open_replace_dialog(), "Ctrl+H",
                                         "Find and replace text in card titles, descriptions and notes")
         self.act_edit_selected = self._action(
-            "&Edit Selected Cards…", self.scene.edit_selection, "Ctrl+E",
+            "&Edit Selected Cards…", self.scene.edit_selection, KEYS["edit_selected"],
             "Edit the selected card, or the color, tags and status of several at once")
         self.act_add = self._action("&Add Card", self.add_card_at_center, "Ctrl+Shift+N",
                                     "Add a new card in the middle of the view")
@@ -508,13 +509,13 @@ class MainWindow(QMainWindow):
         self.act_help = self._action("&Controls", self.show_help, "F1")
         # Paths: highlight what comes before / after a card, or read one route.
         self.act_paths = self._action(
-            "Highlight &Paths", self.toggle_paths, "H",
+            "Highlight &Paths", self.toggle_paths, KEYS["paths"],
             "Light up everything that can come before and after the selected card (H again clears)")
         self.act_follow_paths = self._board_toggle(
             "follow_paths", "Highlight Paths of Selection", "While on, selecting a card lights up its paths")
         self.act_follow_paths.toggled.connect(lambda on: self._follow_selection_paths())
         self.act_read = self._action(
-            "&Read from Selected Card", lambda: self.read_from(), "Ctrl+Shift+R",
+            "&Read from Selected Card", lambda: self.read_from(), KEYS["read"],
             "Walk through the story from the selected card in the Path Reader")
         self.act_thread = self._action(
             "Character &Thread…", self.choose_thread, "Ctrl+T",
@@ -532,6 +533,44 @@ class MainWindow(QMainWindow):
         self.act_card_panel = self._dock_action(
             self.card_dock, "Card &Panel", "Ctrl+Shift+E",
             "Edit the selected card's title, description and details beside the board")
+        self._build_card_actions()
+
+    def _build_card_actions(self) -> None:
+        """The Card menu: commands for the selected cards, groups and arrows, each with a
+        key from shortcuts.KEYS. They're canvas-only (see _canvas_only_shortcuts), which is
+        what makes plain letters safe. (Lambdas: `triggered` passes a checked flag.)"""
+        sc = self.scene
+        self.act_connect = self._action(
+            "&Connect To…", lambda: sc.connect_from_selected(), KEYS["connect"],
+            "Draw an arrow from the selected card or group: click the card to connect to")
+        self.act_details = self._action(
+            "Show or Hide &Details", lambda: sc.toggle_details_selected(), KEYS["details"],
+            "Open the selected cards' details, or close them if they're all open")
+        self.act_collapse = self._action(
+            "C&ollapse or Expand Group", lambda: sc.toggle_collapse_selected(), KEYS["collapse"],
+            "Fold the selected groups (or the groups of the selected cards), or unfold them")
+        self.act_arrange = self._action(
+            "&Auto-arrange Group", lambda: sc.arrange_selected_groups(), KEYS["arrange"],
+            "Lay out the cards of the selected groups (or the groups of the selected cards)")
+        self.act_outside = self._action(
+            "&Not Part of the Story", lambda: sc.toggle_outside_selected(), KEYS["outside_story"],
+            "Leave the selected cards out of the story tools, or put them back")
+        self.act_reverse = self._action(
+            "&Reverse Arrows", lambda: sc.reverse_selected_arrows(), KEYS["reverse"],
+            "Turn the selected arrows round")
+        self.act_collapse_toggle_all = self._action(
+            "Collapse or Expand A&ll Groups", lambda: sc.toggle_collapse_all(), KEYS["collapse_all"],
+            "Fold every group, or unfold them all if every group is folded")
+        self.act_details_toggle_all = self._action(
+            "Show or Hide All D&etails", lambda: sc.toggle_all_details(), KEYS["details_all"],
+            "Show every card's details, or hide them all if they're all showing")
+        self.act_paths_cycle = self._action(
+            "Highlight Before / &After", lambda: sc.cycle_paths_mode(), KEYS["paths_cycle"],
+            "Switch the path highlight between before and after, only what leads here and "
+            "only what follows")
+        self.card_actions = [self.act_connect, self.act_details, self.act_collapse, self.act_arrange,
+                             self.act_outside, self.act_reverse, self.act_collapse_toggle_all,
+                             self.act_details_toggle_all, self.act_paths_cycle]
 
     def _build_menus_and_toolbar(self) -> None:
         mb = self.menuBar()
@@ -560,6 +599,12 @@ class MainWindow(QMainWindow):
         m.addActions([self.act_rename, self.act_remove_unused])
         m.addSeparator()
         m.addAction(self.act_settings)
+        m = mb.addMenu("&Card")
+        m.addActions([self.act_connect, self.act_details, self.act_collapse, self.act_arrange])
+        m.addSeparator()
+        m.addActions([self.act_outside, self.act_reverse])
+        m.addSeparator()
+        m.addActions([self.act_collapse_toggle_all, self.act_details_toggle_all])
         m = mb.addMenu("&View")
         m.addActions([self.act_zoom_in, self.act_zoom_out, self.act_zoom_reset, self.act_fit])
         m.addSeparator()
@@ -581,7 +626,8 @@ class MainWindow(QMainWindow):
         # board's menus (and so out of the Board button).
         m.addAction(self.act_snap)
         m.addSeparator()
-        m.addActions([self.act_story_tools, self.act_paths, self.act_follow_paths, self.act_read,
+        m.addActions([self.act_story_tools, self.act_paths, self.act_paths_cycle, self.act_follow_paths,
+                      self.act_read,
                       self.act_thread])
         m.addSeparator()
         m.addActions([self.act_card_panel, self.act_filter, self.act_strands, self.act_reader,
@@ -873,7 +919,8 @@ class MainWindow(QMainWindow):
 
     def _apply_story_tools(self, on: bool) -> None:
         """Story tools off: their menu items (and shortcuts) go, and their panels close."""
-        for act in (self.act_read, self.act_thread, self.act_checks, self.act_routes, self.act_reader):
+        for act in (self.act_read, self.act_thread, self.act_checks, self.act_routes, self.act_reader,
+                    self.act_outside):
             act.setVisible(on)
         if not on:
             for dock in (self.checks_dock, self.routes_dock, self.reader_dock):
