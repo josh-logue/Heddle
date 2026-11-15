@@ -476,10 +476,16 @@ class MainWindow(QMainWindow):
         self.act_show_group_count = self._board_toggle(
             "show_group_count", "Show &Group Card Count", "Show \"N cards\" in each group's title bar")
         self.act_show_shadows = self._board_toggle("show_shadows", "Card &Shadows", "Draw a shadow under each card")
+        self.act_show_description = self._board_toggle(
+            "show_description", "Show &Descriptions",
+            "Show each card's description on its face (hidden: point at a card to read it)")
         self.act_show_no_description = self._board_toggle(
             "show_no_description", "Show “&No description”",
             "Write “No description” on cards without one (hidden: an otherwise empty card keeps the "
             "space; one with tags, POV or characters closes it up)")
+        self.act_compact_cards = self._board_toggle(
+            "compact_cards", "Co&mpact Cards",
+            "While descriptions are hidden, a card with nothing else on its face is just its title bar")
         self.act_show_handles = self._board_toggle(
             "show_handles", "Connection &Handles",
             "Show the ● handle for dragging out arrows (hidden: use right-click → Connect to…)")
@@ -630,7 +636,7 @@ class MainWindow(QMainWindow):
         face = m.addMenu("Card &Face")
         face.addActions([self.act_show_tags, self.act_show_pov, self.act_show_characters,
                          self.act_show_introductions, self.act_show_group_count, self.act_show_shadows,
-                         self.act_show_no_description])
+                         self.act_show_description, self.act_show_no_description, self.act_compact_cards])
         arrows = m.addMenu("&Arrows")
         arrows.addActions(list(self.routing_actions.values()))
         arrows.addSeparator()
@@ -982,6 +988,11 @@ class MainWindow(QMainWindow):
         """Menus follow the open board's options (and undo/redo of them)."""
         for key, act in self.board_toggles.items():
             act.setChecked(bool(self.scene.display.get(key)))
+        # "No description" only matters while descriptions show, Compact Cards only while
+        # they're hidden: grey out the one that doesn't apply (it keeps its tick).
+        shown = bool(self.scene.display.get("show_description", True))
+        self.act_show_no_description.setEnabled(shown)
+        self.act_compact_cards.setEnabled(not shown)
         routing = self.scene.display.get("arrow_routing", "straight")
         self.routing_actions.get(routing, self.routing_actions["straight"]).setChecked(True)
         self._apply_story_tools(bool(self.scene.display.get("story_tools", True)))
@@ -1026,7 +1037,8 @@ class MainWindow(QMainWindow):
         counts, active = self._filter_state
         shown = describe_counts(counts)
         self.filter_label.setText(f"Filter active: {shown} shown" if active else "")
-        self.filter_banner.update_state(counts, active, self.filter_dock.isVisible())
+        self.filter_banner.update_state(counts, active, self.filter_dock.isVisible(),
+                                        self.filter_panel.match_note() if active else "")
         n = self.filter_panel.selected_count() if active else 0
         self.act_filter.setText(f"&Filter ({n})" if n else "&Filter")
         button = self._toolbar.widgetForAction(self.act_filter)

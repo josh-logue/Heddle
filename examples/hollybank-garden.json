@@ -1,6 +1,6 @@
 {
   "app": "WarpingWeft",
-  "version": 10,
+  "version": 11,
   "custom_colors": [],
   "saved_values": {
     "tags": [
@@ -15,6 +15,8 @@
     "show_group_count": true,
     "show_shadows": true,
     "show_no_description": false,
+    "show_description": true,
+    "compact_cards": false,
     "show_handles": false,
     "show_arrow_labels": true,
     "show_grid": true,

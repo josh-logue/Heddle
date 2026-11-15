@@ -51,11 +51,14 @@ class FilterBanner(QFrame):
     def apply_theme(self) -> None:
         self.setStyleSheet(theme.banner_stylesheet())
 
-    def update_state(self, counts: FilterCounts, active: bool, panel_visible: bool) -> None:
+    def update_state(self, counts: FilterCounts, active: bool, panel_visible: bool,
+                     note: str = "") -> None:
+        """`note` names any "match all" categories at work ("all tags")."""
         if not active or not self.enabled:
             self.hide()
             return
-        self.label.setText(f"<b>Filter on</b> · showing {describe_counts(counts)}")
+        self.label.setText(f"<b>Filter on</b> · showing {describe_counts(counts)}"
+                           + (f" · {note}" if note else ""))
         self.show_btn.setVisible(not panel_visible)  # no point offering it when it's open
         self.adjustSize()
         self._reposition()

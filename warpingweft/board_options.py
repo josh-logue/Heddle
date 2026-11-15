@@ -18,9 +18,14 @@ SECTIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
          "A ★ on cards that introduce a character, and an Introduces line in their details"),
         ("show_group_count", "Group card count", "\"N cards\" in each group's title bar"),
         ("show_shadows", "Card shadows", "A drop shadow under each card"),
+        ("show_description", "Descriptions",
+         "Each card's description on its face. Hidden, point at a card to read it"),
         ("show_no_description", "“No description”",
          "The words on cards that have no description. Hidden, a card with nothing else on "
          "its face keeps the space blank; one showing tags, POV or characters closes it up"),
+        ("compact_cards", "Compact cards",
+         "While descriptions are hidden: a card with nothing else on its face (tags, POV, "
+         "characters) is just its title bar, instead of keeping a blank line"),
     ]),
     ("Canvas and arrows", [
         ("show_handles", "Connection handles",
@@ -67,10 +72,18 @@ class BoardOptionsDialog(QDialog):
                 form.addRow("Arrows", self.routing)
                 v.addLayout(form)
             layout.addWidget(box)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        # "No description" only matters while descriptions show, Compact cards only
+        # while they're hidden: grey out the one that doesn't apply (it keeps its tick).
+        self.checks["show_description"].toggled.connect(self._sync_description_options)
+        self._sync_description_options(self.checks["show_description"].isChecked())
+        buttons =QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _sync_description_options(self, shown: bool) -> None:
+        self.checks["show_no_description"].setEnabled(shown)
+        self.checks["compact_cards"].setEnabled(not shown)
 
     def values(self) -> dict:
         out = {key: check.isChecked() for key, check in self.checks.items()}

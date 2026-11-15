@@ -23,7 +23,8 @@ APP_ID = "WarpingWeft"
 # v8: `display.show_no_description`.
 # v9: a group card's `collapsed` (folded to its title bar).
 # v10: a strand's custom `fields` ({"name", "value"} objects, in order).
-FORMAT_VERSION = 10
+# v11: `display.show_description` and `display.compact_cards`.
+FORMAT_VERSION = 11
 
 # Arrow line styles, and how arrows are drawn between cards (a per-board choice).
 ARROW_STYLES = ("solid", "dashed", "dotted")
@@ -40,6 +41,11 @@ DISPLAY_DEFAULTS: dict[str, Any] = {
     # "No description" on cards without one. Off: a card with nothing else on its face
     # keeps the space blank; one with tags, POV or characters showing closes it up.
     "show_no_description": True,
+    # Descriptions on card faces. Hidden, pointing at a card shows its description.
+    "show_description": True,
+    # While descriptions are hidden: a card with nothing else on its face is just its
+    # title bar (off: it keeps a blank line).
+    "compact_cards": False,
     # Canvas and arrows
     "show_handles": True,        # each card's ● connection handle
     "show_arrow_labels": True,   # arrow labels drawn on the canvas (else shown on hover)

@@ -397,7 +397,8 @@ class CardItem(QGraphicsItem):
         """The board options this card's layout reads. A card is laid out before it
         joins a board (with the defaults), so the scene compares this with
         `laid_out_with` and re-lays it out when they differ."""
-        return (*self.face_options(), bool(self.board_option("show_no_description")))
+        return (*self.face_options(), bool(self.board_option("show_no_description")),
+                bool(self.board_option("show_description")), bool(self.board_option("compact_cards")))
 
     def shows_introductions(self) -> bool:
         return bool(self.introduces) and bool(self.board_option("show_introductions"))
@@ -483,9 +484,22 @@ class CardItem(QGraphicsItem):
         self._char_pills, y = self._layout_pills(face_characters, y, inner)
         # Anything shown under a header (groups need this to size their header panel).
         has_face = bool(self._tag_pills or pov or self._char_pills)
+        title_only = False  # Compact cards: nothing on the face, so just the title bar
 
         if group:
             self.setToolTip("")
+        elif not self.board_option("show_description"):
+            # Descriptions hidden: pointing at the card shows it. The face rows (tags,
+            # POV, characters) are the body; with none, the card keeps a blank line,
+            # or, as a compact card, is just its title bar.
+            desc = c.description.strip()
+            self.setToolTip(_tooltip_html(desc) if desc else "")
+            if has_face:
+                y += PAD - 6  # (the face rows already end with 6 px of spacing)
+            elif self.board_option("compact_cards"):
+                y, title_only = HEADER_HEIGHT, True
+            else:  # one line of description's height, so one-line cards don't change
+                y += QFontMetricsF(self._body_font).height() + PAD
         elif not c.description.strip() and not self.board_option("show_no_description"):
             # "No description" hidden: a card with nothing else on its face keeps the
             # line's space (so it doesn't shrink to a sliver); otherwise what's there
@@ -510,8 +524,11 @@ class CardItem(QGraphicsItem):
         y_without_details = self._closed_h = y
         self._details_top = None
         if self.details_visible:
-            self._details_top = y - PAD / 2 if (not group or has_face) else None
-            y += PAD / 2 if self._details_top is not None else 0
+            if title_only:  # straight under the title bar, as on a strand card
+                y += PAD
+            else:
+                self._details_top = y - PAD / 2 if (not group or has_face) else None
+                y += PAD / 2 if self._details_top is not None else 0
             lfm = QFontMetricsF(self._label_font)
             vfm = QFontMetricsF(self._small_font)
             shown = False

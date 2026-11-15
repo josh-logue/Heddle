@@ -152,7 +152,7 @@ def test_routes_round_trip_and_blank_ones_are_not_saved(tmp_path):
     path = tmp_path / "b.json"
     save_board(board, path)
     raw = json.loads(path.read_text(encoding="utf-8"))
-    assert raw["version"] == FORMAT_VERSION == 10
+    assert raw["version"] == FORMAT_VERSION == 11
     assert [r["key"] for r in raw["routes"]] == [["a", "b"]]
     loaded = load_board(path)
     assert loaded.routes == [RouteData(key=["a", "b"], name="Only way", tags=["T"], inherit=True)]

@@ -36,7 +36,7 @@ MERGED_DESCRIPTIONS = "\n\n———\n\n"
 # Display options that change a card's size, or just what's drawn on it (cards cache
 # their picture, so those are redrawn).
 _LAYOUT_OPTIONS = ("show_pov", "show_characters", "show_tags", "show_introductions", "show_handles",
-                   "show_no_description")
+                   "show_no_description", "show_description", "compact_cards")
 _LOOK_OPTIONS = ("show_group_count", "show_shadows", "story_tools")
 MAJOR_EVERY = 5
 ARRANGE_GAP = 30.0

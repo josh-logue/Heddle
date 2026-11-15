@@ -14,7 +14,7 @@ from warpingweft.model import (
 
 # ----- model ----------------------------------------------------------------------------------
 def test_options_default_on_and_are_cleaned():
-    assert FORMAT_VERSION == 10
+    assert FORMAT_VERSION == 11
     for key in ("show_tags", "show_introductions", "show_group_count", "show_shadows",
                 "show_handles", "show_arrow_labels", "show_grid", "story_tools"):
         assert DISPLAY_DEFAULTS[key] is True and key in DISPLAY_TOGGLES

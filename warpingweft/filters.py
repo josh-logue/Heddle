@@ -1,9 +1,11 @@
 """Card filtering logic (no Qt): option collection and matching.
 
 Values are compared case-insensitively. Within a category, checked values are
-OR'd; across categories they are AND'd. Tags, characters and locations are
-lists; a card matches if any of its entries is checked, and characters can
-optionally require ALL checked names. An empty field is represented by
+OR'd; across categories they are AND'd. Tags, characters, locations and
+introductions are lists: a card matches if any of its entries is checked, or,
+with that category set to "match all", only if it has every checked entry.
+Colour, POV and status hold one value each, so "all" of two could never match:
+they're always "any". An empty field is represented by
 NONE_KEY so "cards with no status" etc. can be filtered too.
 
 Some categories aren't stored on cards but worked out from the arrows (which
@@ -43,6 +45,8 @@ def describe_counts(counts: FilterCounts, filtered: bool = True) -> str:
 CATEGORIES = ("tags", "color", "characters", "pov", "introduces", "locations", "status")
 LABELS = {"tags": "Tags", "color": "Color", "characters": "Characters", "pov": "POV",
           "introduces": "Introduces", "locations": "Locations", "status": "Status"}
+# Categories whose cards hold several values, so "match all" means something.
+MATCH_ALL_CATEGORIES = ("tags", "characters", "introduces", "locations")
 COMPUTED = ("introduces",)  # worked out from the arrows, passed in as extras
 Extras = dict[str, dict[str, list[str]]]
 NONE_KEY = ""
@@ -175,15 +179,19 @@ def search_cards(cards: Iterable[CardData], query: str,
     return found
 
 
-def matches(card: CardData, selection: dict[str, set[str]], characters_all: bool = False,
+def matches(card: CardData, selection: dict[str, set[str]], match_all: Iterable[str] = (),
             extras: Extras | None = None) -> bool:
+    """Whether `card` passes the filter. `match_all` names the categories where a card
+    needs every ticked entry; only MATCH_ALL_CATEGORIES take part (a card has one
+    colour, POV and status, so "all" of two of those would match nothing)."""
     if card.kind == "strand":
         return _strand_card_matches(card, selection)
+    match_all = set(match_all).intersection(MATCH_ALL_CATEGORIES)
     for cat, selected in selection.items():
         if not selected:
             continue
         keys = card_keys(card, cat, extras)
-        if cat == "characters" and characters_all:
+        if cat in match_all:
             if not selected <= keys:
                 return False
         elif not keys & selected:
@@ -193,7 +201,8 @@ def matches(card: CardData, selection: dict[str, set[str]], characters_all: bool
 
 def _strand_card_matches(card: CardData, selection: dict[str, set[str]]) -> bool:
     """A strand card stays lit when its own strand is ticked (a character also under
-    POV or Introduces), or its colour is; other categories don't apply to it."""
+    POV or Introduces), or its colour is; other categories don't apply to it. "Match
+    all" doesn't either: it stands for one strand, so it could never have two."""
     active = {c for c, s in selection.items() if s}
     if not active:
         return True
