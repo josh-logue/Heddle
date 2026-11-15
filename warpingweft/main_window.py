@@ -28,6 +28,7 @@ from .filter_banner import FilterBanner, HighlightBanner
 from .board_options import BoardOptionsDialog
 from .minimap import Minimap
 from .routes_panel import RoutesPanel
+from .card_list import CardListPanel
 from .card_panel import CardPanel
 from .strands_panel import StrandsPanel
 from .backups import backup_dir_for, file_digest, list_backups, make_backup
@@ -36,6 +37,7 @@ from .checks_panel import ChecksPanel
 from .export import export_route, export_text
 from .export_dialogs import SCOPE_ROUTE, SCOPE_SELECTION, ExportImageDialog, ExportTextDialog
 from .export_image import ExportTooLarge, export_image
+from .go_to_card import GoToCardDialog
 from .help_dialog import HelpDialog
 from .path_reader import PathReader
 from .recovery import RecoveryFile, orphans
@@ -226,9 +228,18 @@ class MainWindow(QMainWindow):
         self.card_dock = self._side_dock("Card", "CardDock", self.card_panel, 260)
         self.scene.dialog_opening.connect(self.card_panel.commit)
 
+        # Card List: every card on the board, as a tree of its groups. It sits above
+        # the Card panel, so picking a card there opens it for editing below.
+        self.card_list = CardListPanel(self.scene)
+        self.card_list_dock = self._side_dock("Card List", "CardListDock", self.card_list, 220)
+        self.splitDockWidget(self.card_list_dock, self.card_dock, Qt.Orientation.Vertical)
+        self.card_list.show_ids.connect(self._show_listed)
+        self.go_to_dialog: GoToCardDialog | None = None
+
         self.filter_panel = FilterPanel(self.scene)
         self.filter_dock = self._side_dock("Filter", "FilterDock", self.filter_panel, 240)
         self.scene.modified.connect(self.filter_panel.refresh)
+        self.filter_panel.filter_changed.connect(lambda _counts, on: self.card_list.set_filter_on(on))
 
         # Autosave: the first unsaved change starts a one-shot countdown; later
         # changes don't restart it, so at most ~60 s of work is ever unsaved.
@@ -418,6 +429,8 @@ class MainWindow(QMainWindow):
         self.act_find_prev = self._action("Find Pre&vious", lambda: self._search_step(-1), K.FindPrevious)
         self.act_replace = self._action("&Replace…", lambda: self.scene.open_replace_dialog(), "Ctrl+H",
                                         "Find and replace text in card titles, descriptions and notes")
+        self.act_go_to = self._action("&Go to Card…", lambda: self.go_to_card(), "Ctrl+P",
+                                      "Type part of a card's title and jump to it")
         self.act_edit_selected = self._action(
             "&Edit Selected Cards…", self.scene.edit_selection, KEYS["edit_selected"],
             "Edit the selected card, or the color, tags and status of several at once")
@@ -533,6 +546,9 @@ class MainWindow(QMainWindow):
         self.act_card_panel = self._dock_action(
             self.card_dock, "Card &Panel", "Ctrl+Shift+E",
             "Edit the selected card's title, description and details beside the board")
+        self.act_card_list = self._dock_action(
+            self.card_list_dock, "Card &List", "Ctrl+Shift+L",
+            "Every card on the board, group by group in story order: click one to find it")
         self._build_card_actions()
 
     def _build_card_actions(self) -> None:
@@ -594,7 +610,8 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         m.addActions([self.act_add, self.act_edit_selected, self.act_delete, self.act_select_all])
         m.addSeparator()
-        m.addActions([self.act_find, self.act_find_next, self.act_find_prev, self.act_replace])
+        m.addActions([self.act_find, self.act_find_next, self.act_find_prev, self.act_replace,
+                      self.act_go_to])
         m.addSeparator()
         m.addActions([self.act_rename, self.act_remove_unused])
         m.addSeparator()
@@ -630,7 +647,7 @@ class MainWindow(QMainWindow):
                       self.act_read,
                       self.act_thread])
         m.addSeparator()
-        m.addActions([self.act_card_panel, self.act_filter, self.act_strands, self.act_reader,
+        m.addActions([self.act_card_list, self.act_card_panel, self.act_filter, self.act_strands, self.act_reader,
                       self.act_checks, self.act_routes, self.act_minimap, self.act_dark])
         m = mb.addMenu("&Help")
         m.addAction(self.act_help)
@@ -642,7 +659,7 @@ class MainWindow(QMainWindow):
         for top in mb.actions():
             self.main_menu.addAction(top)          # the same File / Edit / View / Help menus
         self.panels_menu = QMenu("Panels", self)
-        self.panels_menu.addActions([self.act_card_panel, self.act_filter, self.act_strands,
+        self.panels_menu.addActions([self.act_card_list, self.act_card_panel, self.act_filter, self.act_strands,
                                      self.act_routes, self.act_checks, self.act_reader, self.act_minimap])
         self.board_menu = QMenu("Board", self)
         for sub in self._board_menus:
@@ -897,6 +914,58 @@ class MainWindow(QMainWindow):
             rect = rect.united(item.card_scene_rect())
         self.view.centerOn(rect.center())
         self.focus_canvas()  # e.g. a Story Checks result: Del now acts on the found cards
+
+    def go_to_card(self) -> GoToCardDialog:
+        """Open the Go to Card box (Ctrl+P). It doesn't block: Enter picks a card and
+        _go_to_card jumps there."""
+        if self.go_to_dialog is not None:
+            self.go_to_dialog.deleteLater()
+        dialog = self.go_to_dialog = GoToCardDialog(self.scene, self)
+        dialog.card_chosen.connect(self._go_to_card)
+        dialog.open()
+        return dialog
+
+    def _go_to_card(self, card_id: str) -> None:
+        item = self.scene.cards.get(card_id)
+        if item is None:  # gone meanwhile
+            return
+        self._show_card(item)  # unfolds its groups, selects it, brings it into view
+        group = self.scene.title_context(card_id)
+        where = f" in “{group}”" if group else ""
+        self.statusBar().showMessage(f"Went to “{item.card.title.strip() or 'Untitled'}”{where}", 5000)
+        # After the box has closed and handed focus back to wherever it was.
+        QTimer.singleShot(0, self, self.focus_canvas)
+
+    def _show_listed(self, ids: list, unfold: bool) -> None:
+        """Cards picked in the Card List: select them and bring them into view. A card
+        folded inside a collapsed group can't be selected, so its group is, unless
+        `unfold` (Enter or a double-click), which opens the group and hands the
+        keyboard to the canvas."""
+        items = [self.scene.cards[i] for i in ids if i in self.scene.cards]
+        if not items:
+            return
+        if unfold:
+            self.scene.reveal(items)
+            targets = items
+        else:
+            targets = list(dict.fromkeys(self.scene.visible_end(i) for i in items))
+        self.scene.clearSelection()
+        rect = targets[0].card_scene_rect()
+        for item in targets:
+            item.setSelected(True)
+            rect = rect.united(item.card_scene_rect())
+        self.view.centerOn(rect.center())
+        folded = [i for i in items if not unfold and self.scene.visible_end(i) is not i]
+        if folded:
+            group = self.scene.visible_end(folded[0])
+            title = folded[0].card.title.strip() or "Untitled"
+            self.statusBar().showMessage(
+                f"“{title}” is inside the collapsed group “{group.card.title.strip() or 'Untitled'}”"
+                " · Enter or double-click opens it", 6000)
+        if unfold:
+            # Del, D, C… now act on the card. After the click that asked for it, which
+            # would otherwise leave the keyboard in the list.
+            QTimer.singleShot(0, self, self.focus_canvas)
 
     def _show_card(self, item) -> None:
         """Select a card and bring it into view (the reader's steps)."""

@@ -441,6 +441,30 @@ class StoryGraph:
         self._order_cache[key] = tuple(out)
         return out
 
+    def outline(self, by_story: bool = True) -> dict[str, list[str]]:
+        """Every card, strand cards included, under the group it sits in ("" for the
+        board itself), as the Outline export and the Card List show them. With
+        `by_story`, siblings come in story order (arrow_order: chain by chain, a group
+        where its first card comes, a card without arrows where it sits in reading
+        order); otherwise in reading order of their top-left corners (for boards that
+        just sort things into groups)."""
+        children: dict[str, list[str]] = {}
+        for cid, c in self.cards.items():
+            parent = c.parent if c.parent in self.cards and c.parent != cid else ""
+            children.setdefault(parent, []).append(cid)
+        if by_story:
+            rank = {i: n for n, i in enumerate(self.arrow_order())}
+            unranked = len(rank)
+
+            def key(cid: str) -> tuple:
+                ranks = [rank[i] for i in (cid, *self.contents(cid)) if i in rank]
+                return (min(ranks) if ranks else unranked, *self._position(cid))
+        else:
+            key = self._position
+        for kids in children.values():
+            kids.sort(key=key)
+        return children
+
     # ----- cycles and paths --------------------------------------------------------
     def _restricted(self, ids: Iterable[str] | None) -> tuple[list[str], dict[str, list[str]]]:
         """Stops and arrows-between-them, limited to `ids` (default: everything)."""

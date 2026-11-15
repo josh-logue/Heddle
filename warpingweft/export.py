@@ -78,23 +78,11 @@ class _Exporter:
         self.board, self.graph, self.opt = board, graph, options
         self.cards = {c.id: c for c in board.cards}
         self.labels = {c.id: md_escape(_clean(c.label)) for c in board.connections}
-        rank = {i: n for n, i in enumerate(graph.arrow_order())}
-        self.children: dict[str, list[str]] = {}
-        for c in board.cards:
-            if c.kind == "strand":
-                continue  # strand cards aren't part of a story document
-            parent = c.parent if c.parent in self.cards else ""
-            self.children.setdefault(parent, []).append(c.id)
-
-        def first_rank(cid: str) -> tuple:
-            """Where a card or group comes in the story (a group: its first card)."""
-            ids = [cid] + sorted(graph.contents(cid))
-            ranks = [rank[i] for i in ids if i in rank]
-            card = self.cards[cid]
-            return (min(ranks) if ranks else len(rank), card.y, card.x)
-
-        for kids in self.children.values():
-            kids.sort(key=first_rank)
+        # Story order, a group where its first card comes; strand cards aren't part
+        # of a story document.
+        self.children: dict[str, list[str]] = {
+            parent: [k for k in kids if k in self.cards and self.cards[k].kind != "strand"]
+            for parent, kids in graph.outline().items()}
         # Limit to the chosen cards, keeping the groups that hold them.
         self.include = None
         if include is not None:

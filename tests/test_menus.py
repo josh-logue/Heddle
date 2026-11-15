@@ -36,7 +36,8 @@ def test_menu_bar_hidden_and_every_item_in_the_menu_button(window, qapp):
 
 def test_panels_and_board_buttons(window):
     panels = [a.text() for a in window.panels_menu.actions()]
-    assert panels == [window.act_card_panel.text(), window.act_filter.text(), window.act_strands.text(),
+    assert panels == [window.act_card_list.text(), window.act_card_panel.text(), window.act_filter.text(),
+                      window.act_strands.text(),
                       window.act_routes.text(),
                       window.act_checks.text(), window.act_reader.text(), window.act_minimap.text()]
     board = [a.text() for a in window.board_menu.actions() if not a.isSeparator()]
