@@ -789,7 +789,8 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixi
                            vertical: bool | None = None, grid: bool | None = None) -> None:
         """Lay out a group's cards by their arrows (chains left-to-right, separate
         chains stacked, unconnected cards in a row or grid; optionally one row per
-        card color, optionally rotated to run top-to-bottom), then fit the frame."""
+        card color, optionally rotated to run top-to-bottom, optionally wrapping into
+        a new row after the group's row limit), then fit the frame."""
         if by_color is None:
             by_color = group.card.arrange_by_color
         if vertical is None:
@@ -827,7 +828,7 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixi
             nodes.append(Node(m.card.id, r.width(), r.height(), r.x(), r.y(), m.card.color.lower(),
                               group=m.is_group))
         positions = arrange(nodes, edges, by_color=by_color, vertical=vertical, grid=grid,
-                            labels=labels)
+                            labels=labels, wrap=group.card.arrange_wrap)
 
         group.card.width = group.card.height = 0.0  # back to snug auto-fit
         ox = group.pos().x() + GROUP_PAD

@@ -23,6 +23,12 @@ that alternates between plotlines zig-zags between rows.
 
 Arrow labels get room: the gap between two steps widens to fit the longest label on
 the arrows between them (its width left-to-right, its height top-to-bottom).
+
+With a row limit (wrap=N), a chain carries on in a new row after N steps, starting
+at the left again (like lines of text), each row as tall as its tallest step, so a
+long story fits a screen. Steps are what count: the cards stacked at one step (a
+branch) stay together. Unconnected cards wrap after N too. Top-to-bottom, the rows
+become columns.
 """
 from __future__ import annotations
 
@@ -54,23 +60,25 @@ class Node:
 def arrange(nodes: list[Node], edges: list[tuple[str, str]], by_color: bool = False,
             vertical: bool = False, grid: bool = False,
             labels: dict[tuple[str, str], tuple[float, float]] | None = None,
-            ) -> dict[str, tuple[float, float]]:
+            wrap: int = 0) -> dict[str, tuple[float, float]]:
     """Return {node id: (x, y)} top-left positions relative to (0, 0).
 
     vertical=True rotates the whole layout: chains run top-to-bottom, branches
     and colour lanes sit side by side, separate chains become columns, and
     unconnected cards form a column. grid=True wraps unconnected cards into a grid.
     labels gives the (width, height) of each arrow's label, keyed like `edges`:
-    the gap between two steps widens to fit the labels on the arrows between them."""
+    the gap between two steps widens to fit the labels on the arrows between them.
+    wrap > 0 starts a new row (column, top to bottom) after that many steps, and
+    caps the unconnected cards' row (or grid) at that many cards."""
     rank = reading_rank(nodes)  # on the board as it is, whichever way it's laid out
     labels = labels or {}
     if vertical:
         # Lay out the transposed problem horizontally, then swap the axes back.
         flipped = [Node(n.id, n.h, n.w, n.y, n.x, n.color, n.group) for n in nodes]
         room = {k: h for k, (_, h) in labels.items()}
-        placed = _arrange(flipped, edges, by_color, grid, rank, room)
+        placed = _arrange(flipped, edges, by_color, grid, rank, room, wrap)
         return {i: (y, x) for i, (x, y) in placed.items()}
-    return _arrange(nodes, edges, by_color, grid, rank, {k: w for k, (w, _) in labels.items()})
+    return _arrange(nodes, edges, by_color, grid, rank, {k: w for k, (w, _) in labels.items()}, wrap)
 
 
 def reading_rank(nodes: list[Node]) -> dict[str, int]:
@@ -95,11 +103,11 @@ def reading_rank(nodes: list[Node]) -> dict[str, int]:
 
 
 def _arrange(nodes: list[Node], edges: list[tuple[str, str]], by_color: bool, grid: bool,
-             rank: dict[str, int], room: dict[tuple[str, str], float]
+             rank: dict[str, int], room: dict[tuple[str, str], float], wrap: int = 0
              ) -> dict[str, tuple[float, float]]:
     """Lay out left-to-right. `rank` is reading order on the board (reading_rank):
     separate chains, and unconnected cards, keep that order. `room`: how much
-    space each arrow's label needs along the chain."""
+    space each arrow's label needs along the chain. `wrap`: steps per row (0: no limit)."""
     by_id = {n.id: n for n in nodes}
     succ: dict[str, list[str]] = {n.id: [] for n in nodes}
     # Neighbours in the order the arrows were given (a dict keeps that order and
@@ -139,31 +147,51 @@ def _arrange(nodes: list[Node], edges: list[tuple[str, str]], by_color: bool, gr
         rank = _order_in_layers(comp, layer, succ, by_id)
         gaps = _step_gaps(comp, layer, succ, room)
         if by_color:
-            row_top += _place_color_lanes(comp, layer, rank, by_id, positions, row_top, gaps) + ROW_GAP
+            lanes = _lane_order(comp, layer, by_id)
+            for steps in _rows(sorted(set(layer.values())), wrap):
+                part = [i for i in comp if layer[i] in steps]
+                row_top += _place_color_lanes(part, layer, rank, by_id, positions, row_top, gaps,
+                                              lanes) + ROW_GAP
             continue
         columns: dict[int, list[str]] = {}
         for i in sorted(comp, key=lambda i: rank[i]):
             columns.setdefault(layer[i], []).append(i)
         col_w = {k: max(by_id[i].w for i in ids) for k, ids in columns.items()}
         col_h = {k: sum(by_id[i].h for i in ids) + V_GAP * (len(ids) - 1) for k, ids in columns.items()}
-        row_h = max(col_h.values())
-        x = 0.0
-        for k in sorted(columns):
-            y = row_top + (row_h - col_h[k]) / 2
-            for i in columns[k]:
-                positions[i] = (x, y)
-                y += by_id[i].h + V_GAP
-            x += col_w[k] + gaps.get(k, H_GAP)
-        row_top += row_h + ROW_GAP
+        for steps in _rows(sorted(columns), wrap):
+            row_h = max(col_h[k] for k in steps)
+            x = 0.0
+            for k in steps:
+                y = row_top + (row_h - col_h[k]) / 2
+                for i in columns[k]:
+                    positions[i] = (x, y)
+                    y += by_id[i].h + V_GAP
+                x += col_w[k] + gaps.get(k, H_GAP)
+            row_top += row_h + ROW_GAP
     if loose:
-        _place_loose(loose, by_id, positions, row_top, grid, by_color)
+        _place_loose(loose, by_id, positions, row_top, grid, by_color, wrap)
     return positions
 
 
+def _rows(steps: list[int], wrap: int) -> list[list[int]]:
+    """The chain's steps split into rows of `wrap` (all in one row when wrap is 0)."""
+    if wrap <= 0:
+        return [steps]
+    return [steps[k:k + wrap] for k in range(0, len(steps), wrap)]
+
+
+def _per_row(n: int, grid: bool, wrap: int) -> int:
+    """How many unconnected cards go in a row: all of them, a roughly square number
+    with grid, and never more than the row limit."""
+    per_row = math.ceil(math.sqrt(n)) if grid else n
+    return min(per_row, wrap) if wrap > 0 else per_row
+
+
 def _place_loose(ids: list[str], by_id: dict[str, Node], positions: dict[str, tuple[float, float]],
-                 top: float, grid: bool, by_color: bool) -> None:
-    """Unconnected cards: one row (or a grid with grid=True) below the chains. With
-    by_color, each color gets its own row/grid, in order of first appearance."""
+                 top: float, grid: bool, by_color: bool, wrap: int = 0) -> None:
+    """Unconnected cards: one row (or a grid with grid=True) below the chains, wrapping
+    after `wrap` cards. With by_color, each color gets its own row/grid, in order of
+    first appearance."""
     groups: dict[str, list[str]] = {}
     for i in ids:
         groups.setdefault(by_id[i].color if by_color else "", []).append(i)
@@ -171,11 +199,11 @@ def _place_loose(ids: list[str], by_id: dict[str, Node], positions: dict[str, tu
     for group in groups.values():
         mixed = any(by_id[i].group for i in group) and not all(by_id[i].group for i in group)
         place = _place_mixed if mixed else _place_block
-        y += place(group, by_id, positions, y, grid) + V_GAP
+        y += place(group, by_id, positions, y, grid, wrap) + V_GAP
 
 
 def _place_mixed(ids: list[str], by_id: dict[str, Node], positions: dict[str, tuple[float, float]],
-                 top: float, grid: bool) -> float:
+                 top: float, grid: bool, wrap: int = 0) -> float:
     """Unconnected groups and plain cards together (described left-to-right; it's
     turned for top-to-bottom). The groups go in a row, in order. The plain cards
     go below the groups from some group k to the end of the row, starting just
@@ -183,7 +211,8 @@ def _place_mixed(ids: list[str], by_id: dict[str, Node], positions: dict[str, tu
     ends. k is the earliest (so the most room) giving the smallest overall block,
     give or take a SAME_SIZE-deep strip, which puts the cards beside the run of smaller groups at the
     end, or under the whole row if the groups are all much the same size. With
-    grid=True the cards also wrap after a roughly square number per row. Returns
+    grid=True the cards also wrap after a roughly square number per row, and never
+    after more than `wrap` (the row limit; the groups' row isn't limited). Returns
     the block's height."""
     groups = [i for i in ids if by_id[i].group]
     cards = [i for i in ids if not by_id[i].group]
@@ -192,7 +221,7 @@ def _place_mixed(ids: list[str], by_id: dict[str, Node], positions: dict[str, tu
         xs.append(x)
         x += by_id[i].w + V_GAP
     row_end = x - V_GAP
-    per_row = math.ceil(math.sqrt(len(cards))) if grid else len(cards)
+    per_row = _per_row(len(cards), grid, wrap)
     widest = max(by_id[i].w for i in cards)
 
     def cards_from(k: int):
@@ -240,10 +269,10 @@ def _cards_after(groups, cards, by_id, xs, top):
 
 
 def _place_block(ids: list[str], by_id: dict[str, Node], positions: dict[str, tuple[float, float]],
-                 top: float, grid: bool) -> float:
-    """Lay ids out in rows of `cols` (all in one row unless grid), aligned in columns;
-    returns the block's height."""
-    cols = math.ceil(math.sqrt(len(ids))) if grid else len(ids)
+                 top: float, grid: bool, wrap: int = 0) -> float:
+    """Lay ids out in rows of `cols` (all in one row unless grid or a row limit),
+    aligned in columns; returns the block's height."""
+    cols = _per_row(len(ids), grid, wrap)
     rows = [ids[k:k + cols] for k in range(0, len(ids), cols)]
     col_w = [max(by_id[r[c]].w for r in rows if c < len(r)) for c in range(cols)]
     y = top
@@ -332,17 +361,24 @@ def _step_gaps(comp: list[str], layer: dict[str, int], succ: dict[str, list[str]
     return gaps
 
 
-def _place_color_lanes(comp: list[str], layer: dict[str, int], rank: dict[str, int],
-                       by_id: dict[str, Node], positions: dict[str, tuple[float, float]],
-                       top: float, gaps: dict[int, float]) -> float:
-    """Place one chain with a lane per color; returns the chain's total height."""
+def _lane_order(comp: list[str], layer: dict[str, int], by_id: dict[str, Node]) -> list[str]:
+    """A chain's colors in order of first appearance along it: its lanes, top to bottom."""
     first_seen: dict[str, tuple[int, float]] = {}
     for i in comp:
         key = (layer[i], by_id[i].y)
         c = by_id[i].color
         if c not in first_seen or key < first_seen[c]:
             first_seen[c] = key
-    lanes = sorted(first_seen, key=lambda c: first_seen[c])
+    return sorted(first_seen, key=lambda c: first_seen[c])
+
+
+def _place_color_lanes(comp: list[str], layer: dict[str, int], rank: dict[str, int],
+                       by_id: dict[str, Node], positions: dict[str, tuple[float, float]],
+                       top: float, gaps: dict[int, float], lanes: list[str]) -> float:
+    """Place (one row of) a chain with a lane per color, in the chain's lane order
+    `lanes`, so a color keeps its place on every row; a lane with no cards in this
+    row takes no room. Returns the row's height."""
+    lanes = [c for c in lanes if any(by_id[i].color == c for i in comp)]
     lane_of = {c: n for n, c in enumerate(lanes)}
 
     cells: dict[tuple[int, int], list[str]] = {}

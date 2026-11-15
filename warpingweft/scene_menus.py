@@ -3,7 +3,7 @@ from __future__ import annotations
 
 
 from PySide6.QtCore import QPointF
-from PySide6.QtGui import QKeySequence
+from PySide6.QtGui import QActionGroup, QKeySequence
 from PySide6.QtWidgets import (
     QMenu,
 )
@@ -19,6 +19,8 @@ from .shortcuts import ENTER, ESC, KEYS, menu_text as k
 from .widgets import swatch_icon
 
 STD = QKeySequence.StandardKey
+# The row limits offered on a group's right-click menu (any other is set in the group editor).
+WRAP_CHOICES = (3, 4, 5, 6, 8, 10)
 
 
 
@@ -37,6 +39,24 @@ class MenusMixin:
         menu = self.build_context_menu(self._item_at(event.scenePos()), event.scenePos())
         menu.exec(event.screenPos())
         event.accept()
+
+    def _add_wrap_menu(self, menu: QMenu, group: CardItem) -> None:
+        """The group's row limit for auto-arranging: a submenu of common choices, plus
+        the current one if it was set to something else in the group editor."""
+        sub = menu.addMenu("Wrap rows after")
+        choices = sorted({0, *WRAP_CHOICES, group.card.arrange_wrap})
+        picks = QActionGroup(sub)
+        for n in choices:
+            act = sub.addAction("No limit" if n == 0 else f"{n} step{'s' if n != 1 else ''}")
+            act.setCheckable(True)
+            act.setChecked(n == group.card.arrange_wrap)
+            picks.addAction(act)
+            act.triggered.connect(lambda _checked=False, n=n: self._set_wrap(group, n))
+
+    def _set_wrap(self, group: CardItem, n: int) -> None:
+        if group.card.arrange_wrap != n:
+            group.card.arrange_wrap = n
+            self.mark_modified()
 
     def build_context_menu(self, item, pos: QPointF) -> QMenu:
         """The right-click menu for `item` (a card, group, arrow or None for the canvas)
@@ -73,6 +93,7 @@ class MenusMixin:
             grid_act.setChecked(item.card.arrange_grid)
             grid_act.toggled.connect(lambda on: (setattr(item.card, "arrange_grid", on),
                                                  self.mark_modified()))
+            self._add_wrap_menu(menu, item)
             if item.manually_sized:
                 menu.addAction("Fit frame to cards", lambda: (item.reset_size(), self.mark_modified()))
             menu.addSeparator()

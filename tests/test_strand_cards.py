@@ -25,7 +25,7 @@ def test_strand_card_data_is_cleaned():
 def test_round_trip_and_version():
     board = BoardData(cards=[CardData(id="s", kind=KIND_STRAND, strand_kind="locations", strand="Keep")])
     raw = board.to_dict()
-    assert raw["version"] == FORMAT_VERSION == 11
+    assert raw["version"] == FORMAT_VERSION == 12
     back = BoardData.from_dict(raw).cards[0]
     assert (back.kind, back.strand_kind, back.strand) == (KIND_STRAND, "locations", "Keep")
 

@@ -24,7 +24,10 @@ APP_ID = "WarpingWeft"
 # v9: a group card's `collapsed` (folded to its title bar).
 # v10: a strand's custom `fields` ({"name", "value"} objects, in order).
 # v11: `display.show_description` and `display.compact_cards`.
-FORMAT_VERSION = 11
+# v12: a group card's `arrange_wrap` (auto-arrange's row limit).
+FORMAT_VERSION = 12
+# The largest row limit a group can have (steps per row when auto-arranging).
+ARRANGE_WRAP_MAX = 99
 
 # Arrow line styles, and how arrows are drawn between cards (a per-board choice).
 ARROW_STYLES = ("solid", "dashed", "dotted")
@@ -108,6 +111,13 @@ def _as_number(value: Any) -> float:
     return 0.0
 
 
+def _as_wrap(value: Any) -> int:
+    """A row limit from the file: a whole number from 0 (no limit) to ARRANGE_WRAP_MAX."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return 0
+    return max(0, min(ARRANGE_WRAP_MAX, int(value)))
+
+
 def _is_hex_color(value: Any) -> bool:
     return isinstance(value, str) and _HEX_COLOR.fullmatch(value.strip()) is not None
 
@@ -176,6 +186,9 @@ class CardData:
     arrange_vertical: bool = False
     # Groups only: auto-arrange wraps unconnected cards into a grid (else one row/column).
     arrange_grid: bool = False
+    # Groups only: auto-arrange starts a new row (column, top to bottom) after this
+    # many steps, and wraps unconnected cards after this many. 0 means no limit.
+    arrange_wrap: int = 0
     # Left out of the story tools (checks, routes, introductions, threads), with
     # everything inside it if it's a group: e.g. notes or reference cards.
     outside_story: bool = False
@@ -198,6 +211,7 @@ class CardData:
         self.arrange_by_color = self.arrange_by_color is True
         self.arrange_vertical = self.arrange_vertical is True
         self.arrange_grid = self.arrange_grid is True
+        self.arrange_wrap = _as_wrap(self.arrange_wrap)
         self.outside_story = self.outside_story is True
         for name in LIST_FIELDS:
             setattr(self, name, clean_list(getattr(self, name)))

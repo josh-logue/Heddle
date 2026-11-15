@@ -8,11 +8,11 @@ from PySide6.QtGui import QColor, QPainter, QPainterPath, QPalette, QPen
 from PySide6.QtWidgets import (
     QAbstractButton, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
     QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMenu,
-    QPlainTextEdit, QPushButton, QRadioButton, QVBoxLayout, QWidget,
+    QPlainTextEdit, QPushButton, QRadioButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from .card_item import readable_text_color
-from .model import CARD_COLORS, KIND_CARD, KIND_GROUP, KIND_STRAND, CardData
+from .model import ARRANGE_WRAP_MAX, CARD_COLORS, KIND_CARD, KIND_GROUP, KIND_STRAND, CardData
 from .details_form import DetailFields
 from .widgets import SearchableChecklist
 
@@ -160,10 +160,21 @@ class CardDialog(QDialog):
         self.grid_check.setChecked(card.arrange_grid)
         self.grid_check.setToolTip("When auto-arranging, wrap cards that have no arrows into a "
                                    "grid instead of a single row (or column, top to bottom)")
+        # The row limit: a long chain carries on in a new row after this many steps.
+        self.wrap_spin = QSpinBox()
+        self.wrap_spin.setRange(0, ARRANGE_WRAP_MAX)
+        self.wrap_spin.setSpecialValueText("No limit")
+        self.wrap_spin.setPrefix("Wrap after ")
+        self.wrap_spin.setSuffix(" steps")
+        self.wrap_spin.setValue(card.arrange_wrap)
+        self.wrap_spin.setToolTip("When auto-arranging, start a new row after this many steps "
+                                  "(a new column, top to bottom), back at the left. Cards side by "
+                                  "side at one step count once. Cards with no arrows wrap too")
         arrange_row = QHBoxLayout()
         arrange_row.addWidget(self.by_color_check)
         arrange_row.addWidget(self.vertical_check)
         arrange_row.addWidget(self.grid_check)
+        arrange_row.addWidget(self.wrap_spin)
         arrange_row.addStretch()
         arrange_row.addWidget(arrange_btn)
         mv.addLayout(arrange_row)
@@ -391,6 +402,7 @@ class CardDialog(QDialog):
             arrange_by_color=self.by_color_check.isChecked(),
             arrange_vertical=self.vertical_check.isChecked(),
             arrange_grid=self.grid_check.isChecked(),
+            arrange_wrap=self.wrap_spin.value(),
             title=self.title_edit.text().strip() or "Untitled",
             color=self._color,
             description=self.desc_edit.toPlainText().strip(),
