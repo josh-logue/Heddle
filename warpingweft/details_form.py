@@ -12,6 +12,20 @@ from .token_input import TokenInput
 STATUS_PRESETS = ["", *BUILTIN_STATUSES]
 
 
+class ScrollSafeCombo(QComboBox):
+    """A combo box the mouse wheel passes over. These forms sit in scrolling panels,
+    and a plain QComboBox both grabs focus on the wheel and steps through its choices,
+    so scrolling past POV or Status quietly reassigned the card. The wheel goes to the
+    panel instead; pick from the list or type to change the value."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # not WheelFocus
+
+    def wheelEvent(self, event) -> None:
+        event.ignore()  # ignored events travel on to the parent: the scroll area
+
+
 class DetailFields(QObject):
     """Builds the shared widgets from `data` (a CardData or RouteData); the dialog
     places them (add_detail_rows puts Characters … Notes into a form; the tags box
@@ -27,7 +41,7 @@ class DetailFields(QObject):
         self.locations_input = TokenInput(data.locations, suggestions.get("locations", []), "location")
 
         self._board_characters = list(suggestions.get("characters", []))
-        self.pov_combo = QComboBox()
+        self.pov_combo = ScrollSafeCombo()
         self.pov_combo.setEditable(True)
         self.pov_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.pov_combo.lineEdit().setPlaceholderText("Whose point of view? (optional)")
@@ -39,7 +53,7 @@ class DetailFields(QObject):
         self._pov_characters = {c.casefold() for c in data.characters}
         self.characters_input.changed.connect(self._on_characters_changed)
 
-        self.status_combo = QComboBox()
+        self.status_combo = ScrollSafeCombo()
         self.status_combo.setEditable(True)
         preset_keys = {s.casefold() for s in STATUS_PRESETS}
         self.status_combo.addItems(STATUS_PRESETS + [s for s in suggestions.get("status", [])

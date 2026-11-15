@@ -11,7 +11,7 @@ from .model import (
     BUILTIN_STATUSES, CARD_COLORS, KIND_STRAND, CardData,
     board_values,
     count_values, RENAMABLE_FIELDS, clean_list,
-    rename_in_list, rename_value, StrandInfo,
+    rename_in_list, rename_value, StrandInfo, apply_fields, merge_fields,
 )
 from .rename_dialog import RenameDialog
 from .values_dialog import COLORS_KEY
@@ -165,8 +165,9 @@ class StrandsMixin:
 
     def _rename_strand_info(self, kind: str, old: str, new: str) -> bool:
         """Carry a strand's details over to its new name. Renaming onto a strand that has
-        details of its own merges them: both descriptions (the target's first) and the
-        target's picture (or the renamed one's, if the target has none)."""
+        details of its own merges them: both descriptions (the target's first), the
+        target's picture (or the renamed one's, if the target has none) and the fields
+        (the target's values kept; see model.merge_fields)."""
         old_key, new_key = (kind, old.strip().casefold()), (kind, new.strip().casefold())
         moving = self.strand_info.get(old_key)
         if moving is None or not new.strip():
@@ -179,8 +180,36 @@ class StrandsMixin:
             texts = [t for t in (target.description.strip(), moving.description.strip()) if t]
             self.strand_info[new_key] = replace(
                 target, name=new.strip(), description=MERGED_DESCRIPTIONS.join(texts),
-                picture=target.picture or moving.picture)
+                picture=target.picture or moving.picture,
+                fields=merge_fields(target.fields, moving.fields))
         return True
+
+    def apply_strand_fields(self, kind: str, source: str, targets, names=None,
+                            with_values: bool = False) -> tuple[int, int]:
+        """Copy `source`'s field names (only `names`, if given) to the `targets` strands
+        of the same kind, as one undo step: fields a target lacks are added, empty
+        unless `with_values`; existing ones are kept (`with_values` fills empty ones).
+        The source itself and names the board doesn't have are skipped. Returns
+        (strands changed, fields added)."""
+        info = self.strand(kind, source)
+        if info is None or not info.fields:
+            return 0, 0
+        spelling = {v.casefold(): v for v in self.all_values(kind)}
+        changed = added = 0
+        for target in dict.fromkeys(t.strip().casefold() for t in targets):
+            if target == info.name.casefold() or target not in spelling:
+                continue
+            old = self.strand_info.get((kind, target)) or StrandInfo(kind=kind, name=spelling[target])
+            fields = apply_fields(info.fields, old.fields, names, with_values)
+            if fields == old.fields:
+                continue
+            self.strand_info[(kind, target)] = replace(old, fields=fields)
+            changed += 1
+            added += len(fields) - len(old.fields)
+            self._refresh_strand_cards(kind, spelling[target])
+        if changed:
+            self.mark_modified()
+        return changed, added
 
     # ----- strands: saved ones and their details ---------------------------------
     def all_values(self, field_name: str) -> list[str]:
@@ -208,8 +237,8 @@ class StrandsMixin:
         return self.strand_info.get((kind, name.strip().casefold()))
 
     def set_strand_info(self, info: StrandInfo) -> bool:
-        """Store a strand's description and picture (one undo step); blank details
-        forget them. Returns False if nothing changed."""
+        """Store a strand's description, picture and fields (one undo step); blank
+        details forget them. Returns False if nothing changed."""
         if not info.kind or not info.name:
             return False
         key = info.key
@@ -219,7 +248,8 @@ class StrandsMixin:
                 return False
             del self.strand_info[key]
         else:
-            if before is not None and (before.description, before.picture) == (info.description, info.picture):
+            if before is not None and (before.description, before.picture, before.fields) == \
+                    (info.description, info.picture, info.fields):
                 return False  # the same details (however the name is spelled)
             self.strand_info[key] = replace(info, name=before.name if before else info.name)
         self._refresh_strand_cards(info.kind, info.name)
@@ -235,7 +265,7 @@ class StrandsMixin:
 
     def unused_strands(self) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
         """Strands nothing uses (no card or route), per field: (those without details
-        — saved ones only —, those with a description or picture)."""
+        — saved ones only —, those with a description, picture or fields)."""
         plain: dict[str, list[str]] = {}
         detailed: dict[str, list[str]] = {}
         for f in RENAMABLE_FIELDS:
@@ -268,7 +298,7 @@ class StrandsMixin:
 
     def unused_saved_values(self, with_details: bool = False) -> dict[str, list[str]]:
         """Saved strands nothing uses, per field, plus custom palette colours (under
-        COLORS_KEY) that no card or arrow uses. Strands with a description or picture
+        COLORS_KEY) that no card or arrow uses. Strands with a description, picture or fields
         are kept back unless `with_details`."""
         plain, detailed = self.unused_strands()
         out = {f: list(v) for f, v in plain.items()}

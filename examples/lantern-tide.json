@@ -1,6 +1,6 @@
 {
   "app": "WarpingWeft",
-  "version": 9,
+  "version": 10,
   "custom_colors": [],
   "saved_values": {},
   "display": {
@@ -1592,97 +1592,113 @@
       "kind": "characters",
       "name": "Mira Fenn",
       "description": "Apprentice lamplighter, seventeen. Reads tides the way other people read handwriting. POV for most of the book.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "characters",
       "name": "Tobias Quill",
       "description": "Smuggler who knows every flooded lane in Merrow. Owes the Tidewright more than he admits. POV on the Smuggler's Road.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "characters",
       "name": "Captain Ilse Varn",
       "description": "Head of the Tide Wardens. Has kept the lanterns lit for twenty years by paying for oil nobody asked about.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "characters",
       "name": "Old Hesk",
       "description": "Retired lamplighter and Mira's mentor. Knows how the Lantern Engine works and hopes nobody asks him.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "characters",
       "name": "The Tidewright",
       "description": "Something old that lives under the Drowned Market and trades in light. Never seen in full.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "locations",
       "name": "Merrow Docks",
       "description": "Where the lanterns stand in a line along the sea wall.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "locations",
       "name": "Hesk's Workshop",
       "description": "Hesk's cluttered workshop above the chandlery, smelling of oil and brass.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "locations",
       "name": "Warden Hall",
       "description": "The Tide Wardens' headquarters, on the highest ground in the city.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "locations",
       "name": "The Drowned Market",
       "description": "A market that kept trading after the sea came in. Reached by boat or tunnel.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "locations",
       "name": "The Lantern Engine",
       "description": "The machine under the city that feeds oil to every lantern.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Clue",
       "description": "Something the reader needs to solve the mystery.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Flashback",
       "description": "Happens before the main story.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Action",
       "description": "A chase, a fight or a race against the tide.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Twist",
       "description": "Changes what an earlier scene meant.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Ending",
       "description": "A deliberate ending: Story Checks doesn't count it as a dead end.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "status",
       "name": "Ending",
       "description": "A deliberate ending: Story Checks doesn't count it as a dead end.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     }
   ]
 }

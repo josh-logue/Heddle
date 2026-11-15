@@ -22,7 +22,8 @@ APP_ID = "WarpingWeft"
 # v7: strand cards: a card `kind` "strand" with `strand_kind` and `strand`.
 # v8: `display.show_no_description`.
 # v9: a group card's `collapsed` (folded to its title bar).
-FORMAT_VERSION = 9
+# v10: a strand's custom `fields` ({"name", "value"} objects, in order).
+FORMAT_VERSION = 10
 
 # Arrow line styles, and how arrows are drawn between cards (a per-board choice).
 ARROW_STYLES = ("solid", "dashed", "dotted")
@@ -351,30 +352,91 @@ class RouteData:
                     or self.locations or self.status.strip() or self.notes.strip() or self.inherit)
 
 
+def _one_line(value: Any) -> str:
+    """Text for a strand field's name or value: one line, trimmed."""
+    return " ".join(_as_text(value).splitlines()).strip()
+
+
+def clean_fields(raw: Any) -> tuple[tuple[str, str], ...]:
+    """A strand's custom fields as ordered (name, value) pairs. Accepts the saved form
+    ({"name", "value"} objects) or pairs. Nameless entries are dropped and a name used
+    twice (ignoring case) keeps its first entry. A tuple of tuples, so the shallow
+    copies taken for undo snapshots and saving never share anything mutable."""
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for entry in raw if isinstance(raw, (list, tuple)) else ():
+        if isinstance(entry, dict):
+            name, value = entry.get("name"), entry.get("value")
+        elif isinstance(entry, (list, tuple)) and len(entry) == 2:
+            name, value = entry
+        else:
+            continue
+        name = _one_line(name)
+        if name and name.casefold() not in seen:
+            seen.add(name.casefold())
+            out.append((name, _one_line(value)))
+    return tuple(out)
+
+
+def merge_fields(target, moving) -> tuple[tuple[str, str], ...]:
+    """The fields of a strand renamed onto `target`'s strand: the target's fields in
+    its order with its values kept (an empty one takes the other's), then the fields
+    only the renamed strand had."""
+    theirs = {name.casefold(): value for name, value in moving}
+    merged = [(name, value or theirs.get(name.casefold(), "")) for name, value in target]
+    have = {name.casefold() for name, _ in target}
+    merged += [(name, value) for name, value in moving if name.casefold() not in have]
+    return tuple(merged)
+
+
+def apply_fields(source, target, names=None, with_values: bool = False) -> tuple[tuple[str, str], ...]:
+    """`target`'s fields after "applying" `source`'s to it: the source fields it lacks
+    (ignoring case) are added at the end in the source's order, empty unless
+    `with_values`. Existing fields keep their place, and their values, except that
+    `with_values` fills an empty one. `names` limits which source fields are applied."""
+    wanted = None if names is None else {n.strip().casefold() for n in names}
+    picked = [(n, v) for n, v in source if wanted is None or n.casefold() in wanted]
+    given = {n.casefold(): v for n, v in picked}
+    out = [(n, v or given.get(n.casefold(), "")) if with_values else (n, v) for n, v in target]
+    have = {n.casefold() for n, _ in target}
+    out += [(n, v if with_values else "") for n, v in picked if n.casefold() not in have]
+    return tuple(out)
+
+
 @dataclass
 class StrandInfo:
-    """A strand's own details (Strands panel): a description and a picture.
-    `kind` is the field it belongs to (tags, characters, locations or status); names
-    match ignoring case. `picture` is a path to an image file. On the board (in the
-    app) it's absolute; in a saved file it's relative to the board's folder when the
-    image is inside that folder (so the two can move together), else absolute."""
+    """A strand's own details (Strands panel): a description, a picture and custom
+    fields. `kind` is the field it belongs to (tags, characters, locations or status);
+    names match ignoring case. `picture` is a path to an image file. On the board (in
+    the app) it's absolute; in a saved file it's relative to the board's folder when
+    the image is inside that folder (so the two can move together), else absolute.
+    `fields` are the user's own (name, value) pairs, in order (see clean_fields)."""
     kind: str = "tags"
     name: str = ""
     description: str = ""
     picture: str = ""
+    fields: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         self.kind = self.kind if self.kind in RENAMABLE_FIELDS else ""
         self.name = _as_text(self.name).strip()
         self.description = _as_text(self.description)
         self.picture = _as_text(self.picture).strip()
+        self.fields = clean_fields(self.fields)
 
     @property
     def key(self) -> tuple[str, str]:
         return self.kind, self.name.casefold()
 
     def is_blank(self) -> bool:
-        return not (self.description.strip() or self.picture)
+        # Field names alone count: applying fields to a strand must survive a save.
+        return not (self.description.strip() or self.picture or self.fields)
+
+    def to_dict(self) -> dict[str, Any]:
+        """As saved: fields become {"name", "value"} objects."""
+        return {"kind": self.kind, "name": self.name, "description": self.description,
+                "picture": self.picture,
+                "fields": [{"name": n, "value": v} for n, v in self.fields]}
 
 
 def clean_strands(raw: Any) -> list[StrandInfo]:
@@ -490,7 +552,7 @@ class BoardData:
             "cards": [asdict(c) for c in self.cards],
             "connections": [asdict(c) for c in self.connections],
             "routes": [asdict(r) for r in self.routes if r.key and not r.is_blank()],
-            "strands": [asdict(s) for s in self.strands if s.kind and s.name and not s.is_blank()],
+            "strands": [s.to_dict() for s in self.strands if s.kind and s.name and not s.is_blank()],
         }
 
     @classmethod

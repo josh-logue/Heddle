@@ -108,7 +108,7 @@ def collect_options(cards: Iterable[CardData], extras: Extras | None = None) -> 
 
 SEARCH_FIELDS = (("title", "Title"), ("description", "Description"), ("notes", "Notes"))
 # Strands are searched too, after the text: a card's own values, then the strand a
-# strand card stands for, then the descriptions of the strands a card has.
+# strand card stands for, then the descriptions and field values of the strands a card has.
 SEARCH_STRANDS = (("tags", "Tag"), ("characters", "Character"), ("locations", "Location"),
                   ("status", "Status"))
 SNIPPET_CHARS = 30  # context shown either side of a search match
@@ -139,7 +139,8 @@ def search_cards(cards: Iterable[CardData], query: str,
     given: (card id, field label, snippet around the first match). Text comes first
     (title, description, notes), then the card's tags, characters, locations and
     status, then the descriptions of its strands (`strand_info`: {(kind, casefolded
-    name): StrandInfo}), so searching "Greta" finds every card she's on."""
+    name): StrandInfo}), then their field values, so searching "Greta" finds every card
+    she's on."""
     needle = " ".join(query.split()).casefold()
     if not needle:
         return []
@@ -157,12 +158,18 @@ def search_cards(cards: Iterable[CardData], query: str,
             hit = next(((labels.get(kind, "Strand"), name) for kind, name in strands
                         if needle in name.casefold()), None)
         if hit is None and strand_info:
-            for kind, name in strands:
-                info = strand_info.get((kind, name.casefold()))
-                snippet = _snippet(info.description, needle) if info is not None else None
+            infos = [(name, strand_info.get((kind, name.casefold()))) for kind, name in strands]
+            infos = [(name, info) for name, info in infos if info is not None]
+            for name, info in infos:
+                snippet = _snippet(info.description, needle)
                 if snippet is not None:
                     hit = (f"{name}’s description", snippet)
                     break
+            # Then the strands' field values (never the field names: "Age" would find
+            # every card with a character who has an age).
+            hit = hit or next(((f"{name}’s {field}", snippet) for name, info in infos
+                               for field, value in info.fields
+                               if (snippet := _snippet(value, needle)) is not None), None)
         if hit is not None:
             found.append((card.id, *hit))  # one entry per card: the first field that matches
     return found

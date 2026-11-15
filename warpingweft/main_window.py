@@ -1435,7 +1435,7 @@ class MainWindow(QMainWindow):
             "Nothing on the board uses these strands or custom colors. Checked ones "
             "will be removed from this board's strands and palette.", unused, "Remove", self,
             extra=detailed,
-            extra_label=f"Also list unused strands with a description or picture ({n})")
+            extra_label=f"Also list unused strands with a description, picture or fields ({n})")
         if not dialog.exec():
             return 0
         removed = self.scene.remove_saved_values(dialog.selected())

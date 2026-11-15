@@ -191,6 +191,14 @@ class CardItem(QGraphicsItem):
             if scene is not None and hasattr(scene, "strand") else None
         return info.description.strip() if info else ""
 
+    def strand_field_lines(self) -> list[str]:
+        """A strand card's fields that have a value, as "Age: 34" (empty ones are left
+        out: they're placeholders, e.g. names just applied from another strand)."""
+        scene = self.scene()
+        info = scene.strand(self.card.strand_kind, self.card.strand) \
+            if scene is not None and hasattr(scene, "strand") else None
+        return [f"{name}: {value}" for name, value in info.fields if value] if info else []
+
     def members(self) -> list[CardItem]:
         scene = self.scene()
         return scene.members_of(self) if scene is not None and self.is_group else []
@@ -583,7 +591,8 @@ class CardItem(QGraphicsItem):
 
     def _layout_strand(self, blocks: list, inner: float) -> None:
         """A strand card is just its title bar (the strand's name); its details show
-        the strand's description. Its picture is never drawn on the canvas."""
+        the strand's description, then its fields that have a value. Its picture is
+        never drawn on the canvas."""
         self._tag_pills, self._char_pills = [], []
         self.setToolTip(f"{STRAND_KIND_NAMES.get(self.card.strand_kind, 'Strand')}: {self.card.strand}")
         y = self._closed_h = HEADER_HEIGHT
@@ -591,11 +600,18 @@ class CardItem(QGraphicsItem):
         if self.details_visible:
             y += PAD
             desc = self.strand_description()
-            font = self._small_font if desc else self._small_italic
-            text = desc or "No description yet. Add one in Strands."
-            h = QFontMetricsF(font).boundingRect(QRectF(0, 0, inner, 1e6), WRAP, text).height()
-            blocks.append((QRectF(PAD, y, inner, h), text, font, "text" if desc else "muted"))
-            y += h + PAD
+            fields = self.strand_field_lines()
+            texts = ([(desc, self._small_font, "text")] if desc else []) \
+                + [(line, self._small_font, "text") for line in fields]
+            if not texts:
+                texts = [("No description yet. Add one in Strands.", self._small_italic, "muted")]
+            for n, (text, font, role) in enumerate(texts):
+                if n:  # a little apart from the description; field lines sit closer
+                    y += PAD / 2 if n == 1 and desc else 2
+                h = QFontMetricsF(font).boundingRect(QRectF(0, 0, inner, 1e6), WRAP, text).height()
+                blocks.append((QRectF(PAD, y, inner, h), text, font, role))
+                y += h
+            y += PAD
         self._blocks = blocks
         self._header_area_h = HEADER_HEIGHT
         self._height = y

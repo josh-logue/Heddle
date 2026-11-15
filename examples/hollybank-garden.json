@@ -1,6 +1,6 @@
 {
   "app": "WarpingWeft",
-  "version": 9,
+  "version": 10,
   "custom_colors": [],
   "saved_values": {
     "tags": [
@@ -2019,139 +2019,162 @@
       "kind": "characters",
       "name": "Priya",
       "description": "Runs the Tuesday session. Looks after the brassicas and the salad bed.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "characters",
       "name": "Dev",
       "description": "Compost, water and anything with a spanner. Mostly Saturdays.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "characters",
       "name": "Marguerite",
       "description": "Keeps the seed library and the herb spiral. Knows every plant's Latin name.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "characters",
       "name": "Sam",
       "description": "Greenhouse and beans. Brings the children's club on Thursdays.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "locations",
       "name": "North Plot",
       "description": "The four raised beds by the gate: full sun, heavy soil.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "locations",
       "name": "South Plot",
       "description": "Herbs, compost and the shed, against the south wall.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "locations",
       "name": "Greenhouse",
       "description": "The glasshouse donated by the allotment society. Unheated.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "locations",
       "name": "Orchard Corner",
       "description": "Six old apple trees and the bee hotel.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Spring Sow",
       "description": "Sow between March and May.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Summer Sow",
       "description": "Sow between June and August.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Autumn Sow",
       "description": "Sow or plant between September and November, to overwinter.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Perennial",
       "description": "Comes back every year: don't dig it up.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Needs Netting",
       "description": "Pigeons or butterflies will eat it: keep it under net.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Pollinator Friendly",
       "description": "Flowers bees and hoverflies visit.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Frost Tender",
       "description": "Bring it in, or fleece it, below 5 °C. Not on any card yet: drag it from Strands onto the plants that need it.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "Urgent",
       "description": "Do this before anything else.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "This Week",
       "description": "Should be done by Sunday.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "tags",
       "name": "When Dry",
       "description": "Wait for a dry day.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "status",
       "name": "Planned",
       "description": "On the list, not sown yet.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "status",
       "name": "Sown",
       "description": "In the ground, not up yet.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "status",
       "name": "Growing",
       "description": "Up and growing.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "status",
       "name": "Harvesting",
       "description": "Ready to pick.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     },
     {
       "kind": "status",
       "name": "Resting",
       "description": "Overwintering, or between crops.",
-      "picture": ""
+      "picture": "",
+      "fields": []
     }
   ]
 }

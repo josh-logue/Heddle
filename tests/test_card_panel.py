@@ -2,6 +2,7 @@
 undo step, undo shows through, switching cards keeps what was typed, and a dialog
 opened meanwhile starts from it."""
 import pytest
+from PySide6.QtCore import Qt
 
 from warpingweft.model import KIND_GROUP, KIND_STRAND, CardData
 from tests.conftest import wait_until
@@ -96,3 +97,37 @@ def test_a_deleted_card_empties_the_panel(window, panel):
     s.remove_cards([a])
     s.mark_modified()
     assert panel.card_id is None and panel.heading.text() == "No card selected"
+
+
+def wheel_over(widget, qapp, steps=-3):
+    """Send a wheel event (negative steps scroll down) to the middle of `widget`;
+    returns whether the widget accepted it."""
+    from PySide6.QtCore import QPoint, QPointF
+    from PySide6.QtGui import QWheelEvent
+    pos = QPointF(widget.width() / 2, widget.height() / 2)
+    event = QWheelEvent(pos, widget.mapToGlobal(pos), QPoint(), QPoint(0, 120 * steps),
+                        Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                        Qt.ScrollPhase.NoScrollPhase, False)
+    qapp.sendEvent(widget, event)
+    qapp.processEvents()
+    return event.isAccepted()
+
+
+def test_scrolling_over_pov_or_status_scrolls_the_panel_not_the_choice(window, panel, qapp):
+    """The wheel over POV or Status used to cycle through their choices, quietly
+    reassigning the card while you only meant to scroll the panel. (An editable combo
+    showing a POV can sit on the blank entry, so scrolling up cleared it.)"""
+    s = window.scene
+    s.add_card(CardData(title="Other", characters=["Mabel", "Greta"], x=400))
+    a = s.add_card(CardData(title="Arrival", characters=["Rowan"], pov="Rowan", status="Draft"))
+    select(s, a)
+    for combo in (panel._fields.pov_combo, panel._fields.status_combo):
+        before = combo.currentText()
+        for steps in (-3, 3):                # down, then up
+            # Left unaccepted, a real wheel event goes on to the scroll area. (Qt doesn't
+            # pass on events sent from code, so a test can't watch the panel scroll.)
+            assert not wheel_over(combo, qapp, steps)
+            assert combo.currentText() == before
+        # ...nor does the wheel grab focus (QComboBox's default WheelFocus would).
+        assert combo.focusPolicy() == Qt.FocusPolicy.StrongFocus
+    assert a.card.pov == "Rowan" and a.card.status == "Draft"
