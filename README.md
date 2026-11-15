@@ -5,6 +5,10 @@ around freely, linked with directed arrows and gathered into groups. Each card c
 characters, locations and a status (together called *strands*), and story tools show the routes
 through the story, where characters are introduced, and loose ends.
 
+![Act II of the Lantern Tide demo board: two groups, The Warden's Road and The Smuggler's Road, each holding story cards with characters and tags, joined by labelled arrows that branch and meet again](docs/images/lantern-tide-act2.png)
+
+*Act II of `examples/lantern-tide.json`, one of the demo boards.*
+
 ## Setup
 
 ```powershell

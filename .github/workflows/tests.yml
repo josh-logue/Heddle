@@ -1,0 +1,36 @@
+# Runs the test suite and the linter on every push and pull request.
+# Windows only for now: it's the platform the app is built and tested on.
+# Qt runs headless (conftest.py sets QT_QPA_PLATFORM=offscreen), so no display is needed.
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Test
+        run: python -m pytest

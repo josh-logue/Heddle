@@ -1,0 +1,11 @@
+# Store text with LF line endings in the repository, whatever each checkout uses locally,
+# so diffs don't fill up with line-ending noise between Windows and other machines.
+* text=auto
+
+# Windows batch files can misbehave with LF endings (labels, multi-line commands).
+*.bat text eol=crlf
+
+# Never touch binary files.
+*.png binary
+*.jpg binary
+*.ico binary
