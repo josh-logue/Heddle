@@ -27,9 +27,27 @@ def test_lantern_tide_findings():
     assert len(board.routes) == 3
 
 
+def test_lantern_tide_shows_strand_fields_and_a_folded_group():
+    board = load_board(EXAMPLES / "lantern-tide.json")
+    people = [s for s in board.strands if s.kind == "characters"]
+    assert people and all(dict(s.fields).keys() == {"Age", "Role"} for s in people)
+    cards = {c.id: c for c in board.cards}
+    assert [c.id for c in board.cards if c.collapsed] == ["notes"]  # the ⊞ tip points at it
+    assert "tip_fold" in cards and cards["tip_fold"].parent == "start"
+
+
 def test_hollybank_garden_is_a_sorting_board():
     board = load_board(EXAMPLES / "hollybank-garden.json")
     assert not board.connections
     assert board.display["story_tools"] is False
     assert "Frost Tender" in board.all_values("tags")
     assert not any("Frost Tender" in c.tags for c in board.cards)  # left for the drag demo
+
+
+def test_hollybank_garden_leaves_one_place_for_apply_to():
+    board = load_board(EXAMPLES / "hollybank-garden.json")
+    places = {s.name: dict(s.fields) for s in board.strands if s.kind == "locations"}
+    without = [name for name, fields in places.items() if not fields]
+    assert without == ["Orchard Corner"]  # its description says to use Apply to…
+    assert all(f.keys() == {"Sun", "Soil"} for f in places.values() if f)
+    assert any(c.id == "tip_list" for c in board.cards)

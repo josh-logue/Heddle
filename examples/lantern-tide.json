@@ -932,7 +932,7 @@
     {
       "id": "tip_strands",
       "title": "Try: Strands",
-      "description": "Ctrl+Shift+B lists every character, place and tag, with a description. Click ▸ on a strand card below to read its description there.",
+      "description": "Ctrl+Shift+B lists every character, place and tag, with a description and fields such as Age. Click ▸ on a strand card below to read them there.",
       "color": "#6b6b6b",
       "tags": [],
       "characters": [],
@@ -941,6 +941,32 @@
       "status": "",
       "notes": "",
       "x": 282.0,
+      "y": 181.0,
+      "kind": "card",
+      "parent": "start",
+      "width": 0.0,
+      "height": 0.0,
+      "arrange_by_color": false,
+      "arrange_vertical": false,
+      "arrange_grid": false,
+      "arrange_wrap": 0,
+      "outside_story": false,
+      "collapsed": false,
+      "strand_kind": "",
+      "strand": ""
+    },
+    {
+      "id": "tip_fold",
+      "title": "Try: Fold a Group",
+      "description": "World Notes is folded to its title bar: click ⊞ to open it. Select a group and press C to fold it; Shift+C folds them all.",
+      "color": "#6b6b6b",
+      "tags": [],
+      "characters": [],
+      "pov": "",
+      "locations": [],
+      "status": "",
+      "notes": "",
+      "x": 542.0,
       "y": 181.0,
       "kind": "card",
       "parent": "start",
@@ -977,7 +1003,7 @@
       "arrange_grid": false,
       "arrange_wrap": 0,
       "outside_story": true,
-      "collapsed": false,
+      "collapsed": true,
       "strand_kind": "",
       "strand": ""
     },
@@ -1640,37 +1666,82 @@
     {
       "kind": "characters",
       "name": "Mira Fenn",
-      "description": "Apprentice lamplighter, seventeen. Reads tides the way other people read handwriting. POV for most of the book.",
+      "description": "Reads tides the way other people read handwriting. POV for most of the book.",
       "picture": "",
-      "fields": []
+      "fields": [
+        {
+          "name": "Age",
+          "value": "17"
+        },
+        {
+          "name": "Role",
+          "value": "Apprentice lamplighter"
+        }
+      ]
     },
     {
       "kind": "characters",
       "name": "Tobias Quill",
-      "description": "Smuggler who knows every flooded lane in Merrow. Owes the Tidewright more than he admits. POV on the Smuggler's Road.",
+      "description": "Knows every flooded lane in Merrow. Owes the Tidewright more than he admits. POV on the Smuggler's Road.",
       "picture": "",
-      "fields": []
+      "fields": [
+        {
+          "name": "Age",
+          "value": "24"
+        },
+        {
+          "name": "Role",
+          "value": "Smuggler"
+        }
+      ]
     },
     {
       "kind": "characters",
       "name": "Captain Ilse Varn",
-      "description": "Head of the Tide Wardens. Has kept the lanterns lit for twenty years by paying for oil nobody asked about.",
+      "description": "Has kept the lanterns lit for twenty years by paying for oil nobody asked about.",
       "picture": "",
-      "fields": []
+      "fields": [
+        {
+          "name": "Age",
+          "value": "46"
+        },
+        {
+          "name": "Role",
+          "value": "Captain of the Tide Wardens"
+        }
+      ]
     },
     {
       "kind": "characters",
       "name": "Old Hesk",
-      "description": "Retired lamplighter and Mira's mentor. Knows how the Lantern Engine works and hopes nobody asks him.",
+      "description": "Mira's mentor. Knows how the Lantern Engine works and hopes nobody asks him.",
       "picture": "",
-      "fields": []
+      "fields": [
+        {
+          "name": "Age",
+          "value": "71"
+        },
+        {
+          "name": "Role",
+          "value": "Retired lamplighter"
+        }
+      ]
     },
     {
       "kind": "characters",
       "name": "The Tidewright",
-      "description": "Something old that lives under the Drowned Market and trades in light. Never seen in full.",
+      "description": "Something old that lives under the Drowned Market. Never seen in full.",
       "picture": "",
-      "fields": []
+      "fields": [
+        {
+          "name": "Age",
+          "value": "Older than Merrow"
+        },
+        {
+          "name": "Role",
+          "value": "Trader in light"
+        }
+      ]
     },
     {
       "kind": "locations",

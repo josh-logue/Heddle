@@ -182,6 +182,32 @@
       "strand": ""
     },
     {
+      "id": "tip_list",
+      "title": "Try: Card List",
+      "description": "Ctrl+Shift+L lists every card in its groups. ⋮ → Status column shows what's Sown, Growing or Harvesting. Ctrl+P jumps to a card by name.",
+      "color": "#6b6b6b",
+      "tags": [],
+      "characters": [],
+      "pov": "",
+      "locations": [],
+      "status": "",
+      "notes": "",
+      "x": 0.0,
+      "y": 605.0,
+      "kind": "card",
+      "parent": "start",
+      "width": 0.0,
+      "height": 0.0,
+      "arrange_by_color": false,
+      "arrange_vertical": false,
+      "arrange_grid": false,
+      "arrange_wrap": 0,
+      "outside_story": false,
+      "collapsed": false,
+      "strand_kind": "",
+      "strand": ""
+    },
+    {
       "id": "garden",
       "title": "Hollybank Garden 2027",
       "description": "",
@@ -1984,7 +2010,7 @@
       "status": "Planned",
       "notes": "",
       "x": 10.0,
-      "y": 687.0,
+      "y": 814.0,
       "kind": "card",
       "parent": "",
       "width": 0.0,
@@ -2012,7 +2038,7 @@
       "status": "Planned",
       "notes": "",
       "x": 56.0,
-      "y": 772.0,
+      "y": 899.0,
       "kind": "card",
       "parent": "",
       "width": 0.0,
@@ -2041,7 +2067,7 @@
       "status": "Planned",
       "notes": "",
       "x": 22.0,
-      "y": 857.0,
+      "y": 984.0,
       "kind": "card",
       "parent": "",
       "width": 0.0,
@@ -2069,7 +2095,7 @@
       "status": "Planned",
       "notes": "",
       "x": 68.0,
-      "y": 942.0,
+      "y": 1069.0,
       "kind": "card",
       "parent": "",
       "width": 0.0,
@@ -2118,28 +2144,55 @@
     {
       "kind": "locations",
       "name": "North Plot",
-      "description": "The four raised beds by the gate: full sun, heavy soil.",
+      "description": "The four raised beds by the gate.",
       "picture": "",
-      "fields": []
+      "fields": [
+        {
+          "name": "Sun",
+          "value": "Full sun"
+        },
+        {
+          "name": "Soil",
+          "value": "Heavy clay"
+        }
+      ]
     },
     {
       "kind": "locations",
       "name": "South Plot",
       "description": "Herbs, compost and the shed, against the south wall.",
       "picture": "",
-      "fields": []
+      "fields": [
+        {
+          "name": "Sun",
+          "value": "Afternoon sun"
+        },
+        {
+          "name": "Soil",
+          "value": "Light and free-draining"
+        }
+      ]
     },
     {
       "kind": "locations",
       "name": "Greenhouse",
       "description": "The glasshouse donated by the allotment society. Unheated.",
       "picture": "",
-      "fields": []
+      "fields": [
+        {
+          "name": "Sun",
+          "value": "Full sun, under glass"
+        },
+        {
+          "name": "Soil",
+          "value": "Pots and grow bags"
+        }
+      ]
     },
     {
       "kind": "locations",
       "name": "Orchard Corner",
-      "description": "Six old apple trees and the bee hotel.",
+      "description": "Six old apple trees and the bee hotel. No fields yet: pick North Plot in Strands, then Apply to… to give it the same ones.",
       "picture": "",
       "fields": []
     },

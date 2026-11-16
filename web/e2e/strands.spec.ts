@@ -57,7 +57,8 @@ test("the Strands panel describes a strand and renames it everywhere", async ({ 
   await expect.poll(() => page.evaluate(() => {
     const s = (window as unknown as { heddleCanvas: { store: { strand(k: string, n: string): { description: string; fields: string[][] } | undefined } } }).heddleCanvas.store;
     return s.strand("characters", "Tobias Quill");
-  })).toMatchObject({ description: "A smuggler with a ledger.", fields: [["Field", "Smuggler"]] });
+  })).toMatchObject({ description: "A smuggler with a ledger.", // the new field goes after the demo's own
+                      fields: [["Age", "24"], ["Role", "Smuggler"], ["Field", "Smuggler"]] });
   await shot(page, "strands");
 
   await panel.getByRole("button", { name: "Rename…" }).click();

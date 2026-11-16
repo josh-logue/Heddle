@@ -247,4 +247,15 @@ describe("demo boards", () => {
     expect(allValues(board, "tags")).toContain("Frost Tender");
     expect(board.cards.some((c) => c.tags.includes("Frost Tender"))).toBe(false);
   });
+
+  it("the demos show strand fields and a folded group", () => {
+    const lantern = load("lantern-tide.json");
+    const people = lantern.strands.filter((s) => s.kind === "characters");
+    expect(people.length).toBeGreaterThan(0);
+    for (const s of people) expect(s.fields.map(([name]) => name)).toEqual(["Age", "Role"]);
+    expect(lantern.cards.filter((c) => c.collapsed).map((c) => c.id)).toEqual(["notes"]);
+    const garden = load("hollybank-garden.json");
+    const bare = garden.strands.filter((s) => s.kind === "locations" && s.fields.length === 0);
+    expect(bare.map((s) => s.name)).toEqual(["Orchard Corner"]); // left for Apply to…
+  });
 });

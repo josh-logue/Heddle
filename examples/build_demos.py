@@ -1,11 +1,12 @@
 """Builds the two demo boards in this folder:
 
 * lantern-tide.json: story planning (branches that meet again, nested acts and
-  chapters, strands with descriptions, strand cards, a loop, routes, endings,
-  notes kept outside the story, and a few Story Checks findings left on purpose).
+  chapters, strands with descriptions and fields, strand cards, a loop, routes, endings,
+  notes kept outside the story in a folded group, and a few Story Checks findings left
+  on purpose).
 * hollybank-garden.json: sorting things into groups with no arrows (nested groups,
-  each auto-arrange option, colors and strands as categories, a pile to sort and
-  an unused strand to drag on).
+  each auto-arrange option, colors and strands as categories, places with fields and
+  one without for Apply to…, a pile to sort and an unused strand to drag on).
 
 The content is written here once so the boards can be rebuilt with the same card
 ids after the app changes:  .venv\\Scripts\\python.exe examples\\build_demos.py
@@ -57,8 +58,13 @@ class Builder:
         self.arrows.append(ConnectionData(source=source, target=target, label=label,
                                           id=f"{source}>{target}", **fields))
 
-    def describe(self, kind: str, entries: dict[str, str]) -> None:
-        self.strands += [StrandInfo(kind=kind, name=n, description=d) for n, d in entries.items()]
+    def describe(self, kind: str, entries: dict[str, str],
+                 fields: dict[str, dict[str, str]] | None = None) -> None:
+        """Strand descriptions, plus each strand's own fields (name: value, in order)."""
+        fields = fields or {}
+        self.strands += [StrandInfo(kind=kind, name=n, description=d,
+                                    fields=tuple(fields.get(n, {}).items()))
+                         for n, d in entries.items()]
 
 
 # ---------------------------------------------------------------------------
@@ -85,8 +91,11 @@ STORY_TIPS = (
      "Select a card and press H for what comes before and after it. Ctrl+T follows one "
      "character through the story."),
     ("tip_strands", "Try: Strands",
-     "Ctrl+Shift+B lists every character, place and tag, with a description. Click ▸ on a "
-     "strand card below to read its description there."),
+     "Ctrl+Shift+B lists every character, place and tag, with a description and fields such "
+     "as Age. Click ▸ on a strand card below to read them there."),
+    ("tip_fold", "Try: Fold a Group",
+     "World Notes is folded to its title bar: click ⊞ to open it. Select a group and press C "
+     "to fold it; Shift+C folds them all."),
 )
 
 
@@ -225,16 +234,18 @@ def lantern_tide() -> tuple[BoardData, list[str]]:
         b.arrow(s, t, label, **extra)
 
     b.describe("characters", {
-        MIRA: "Apprentice lamplighter, seventeen. Reads tides the way other people read "
-              "handwriting. POV for most of the book.",
-        TOBIAS: "Smuggler who knows every flooded lane in Merrow. Owes the Tidewright more "
-                "than he admits. POV on the Smuggler's Road.",
-        ILSE: "Head of the Tide Wardens. Has kept the lanterns lit for twenty years by paying "
-              "for oil nobody asked about.",
-        HESK: "Retired lamplighter and Mira's mentor. Knows how the Lantern Engine works and "
-              "hopes nobody asks him.",
-        TIDE: "Something old that lives under the Drowned Market and trades in light. Never "
-              "seen in full.",
+        MIRA: "Reads tides the way other people read handwriting. POV for most of the book.",
+        TOBIAS: "Knows every flooded lane in Merrow. Owes the Tidewright more than he admits. "
+                "POV on the Smuggler's Road.",
+        ILSE: "Has kept the lanterns lit for twenty years by paying for oil nobody asked about.",
+        HESK: "Mira's mentor. Knows how the Lantern Engine works and hopes nobody asks him.",
+        TIDE: "Something old that lives under the Drowned Market. Never seen in full.",
+    }, fields={
+        MIRA: {"Age": "17", "Role": "Apprentice lamplighter"},
+        TOBIAS: {"Age": "24", "Role": "Smuggler"},
+        ILSE: {"Age": "46", "Role": "Captain of the Tide Wardens"},
+        HESK: {"Age": "71", "Role": "Retired lamplighter"},
+        TIDE: {"Age": "Older than Merrow", "Role": "Trader in light"},
     })
     b.describe("locations", {
         DOCKS: "Where the lanterns stand in a line along the sea wall.",
@@ -274,6 +285,11 @@ def lantern_tide() -> tuple[BoardData, list[str]]:
     return board, arrange
 
 
+def fold_world_notes(scene) -> None:
+    """World Notes starts folded, so the demo shows a collapsed group (and its ⊞)."""
+    scene.set_collapsed([scene.cards["notes"]], True)
+
+
 def place_lantern_tide(scene) -> None:
     start = scene.cards["start"].card_scene_rect()
     row = place_row(scene, ["act1", "act2", "act3"], 0, start.height() + GAP)
@@ -303,6 +319,9 @@ GARDEN_TIPS = (
      "has its own options in its editor."),
     ("tip_sort", "Try: Sort the Pile",
      "Drag the plants below into a bed. Let go over a group to add a card to it."),
+    ("tip_list", "Try: Card List",
+     "Ctrl+Shift+L lists every card in its groups. ⋮ → Status column shows what's Sown, "
+     "Growing or Harvesting. Ctrl+P jumps to a card by name."),
 )
 
 
@@ -443,10 +462,15 @@ def hollybank_garden() -> tuple[BoardData, list[str]]:
         SAM: "Greenhouse and beans. Brings the children's club on Thursdays.",
     })
     b.describe("locations", {
-        NORTH: "The four raised beds by the gate: full sun, heavy soil.",
+        NORTH: "The four raised beds by the gate.",
         SOUTH: "Herbs, compost and the shed, against the south wall.",
         GLASS: "The glasshouse donated by the allotment society. Unheated.",
-        ORCHARD: "Six old apple trees and the bee hotel.",
+        ORCHARD: "Six old apple trees and the bee hotel. No fields yet: pick North Plot in "
+                 "Strands, then Apply to… to give it the same ones.",
+    }, fields={
+        NORTH: {"Sun": "Full sun", "Soil": "Heavy clay"},
+        SOUTH: {"Sun": "Afternoon sun", "Soil": "Light and free-draining"},
+        GLASS: {"Sun": "Full sun, under glass", "Soil": "Pots and grow bags"},
     })
     b.describe("tags", {
         "Spring Sow": "Sow between March and May.",
@@ -543,7 +567,7 @@ def build(board: BoardData, arrange: list[str], place, path: Path, extra=None) -
 
 def main() -> None:
     board, arrange = lantern_tide()
-    build(board, arrange, place_lantern_tide, HERE / "lantern-tide.json")
+    build(board, arrange, place_lantern_tide, HERE / "lantern-tide.json", extra=fold_world_notes)
     board, arrange = hollybank_garden()
     build(board, arrange, place_hollybank_garden, HERE / "hollybank-garden.json",
           extra=scatter_seeds)

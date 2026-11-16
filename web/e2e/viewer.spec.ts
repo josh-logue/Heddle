@@ -60,6 +60,8 @@ test("folds every group and shows every card's details", async ({ page }) => {
   await expect(page.locator(".board-name")).toHaveText("Lantern Tide");
   const view = page.getByText("View", { exact: true });
   await view.click();
+  await page.getByRole("button", { name: /Expand every group/ }).click(); // World Notes starts folded
+  await view.click();
   await page.getByRole("button", { name: /Collapse every group/ }).click();
   await expect(page.getByRole("button", { name: /Expand every group/ })).toBeHidden(); // picking closes the menu
   await view.click();
