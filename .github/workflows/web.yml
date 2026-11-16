@@ -1,0 +1,78 @@
+# Checks the web version (lint, type check, unit tests, build) and publishes it to
+# GitHub Pages at https://josh-logue.github.io/Heddle/.
+# Runs only when the web app, its workflow or the files it reads from the desktop app change.
+# Deploys from main and, while the port is under way, from the web branch. The Pages
+# environment must allow the web branch (Settings > Environments > github-pages).
+name: Web
+
+on:
+  push:
+    branches: [main, web]
+    paths:
+      - "web/**"
+      - "heddle/model.py"
+      - "examples/*.json"
+      - ".github/workflows/web.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - "heddle/model.py"
+      - "examples/*.json"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

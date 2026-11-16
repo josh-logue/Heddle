@@ -12,6 +12,9 @@ build/
 dist/
 *.spec
 
+# Web version (web/): npm packages; its build output is covered by dist/ above
+node_modules/
+
 # Editors, Claude Code and Windows/OneDrive clutter
 .claude/
 .vscode/
