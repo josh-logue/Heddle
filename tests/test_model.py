@@ -4,7 +4,7 @@ import math
 import pytest
 
 from heddle.model import (
-    CARD_COLORS, BoardData, CardData, ConnectionData, board_values, clean_list, count_values, load_board,
+    APP_ID, CARD_COLORS, BoardData, CardData, ConnectionData, board_values, clean_list, count_values, load_board,
     rename_in_list, rename_value, save_board,
 )
 
@@ -16,18 +16,24 @@ def test_clean_list_splits_strips_and_dedupes_case_insensitively():
     assert clean_list(None) == [] and clean_list(42) == []
 
 
-# ----- loading old (v1) files ---------------------------------------------------------
-def test_v1_file_upgrades_single_strings_to_lists(tmp_path):
-    v1 = {"cards": [{"id": "c1", "title": "Old", "tag": "Act 1", "location": "Forest",
-                     "characters": "Mara, Rowan", "color": "#123456"}]}
-    p = tmp_path / "v1.json"
-    p.write_text(json.dumps(v1))
+# ----- loading older or hand-written files ---------------------------------------------
+def test_comma_strings_split_and_missing_custom_colors_are_recovered(tmp_path):
+    raw = {"cards": [{"id": "c1", "title": "Old", "characters": "Mara, Rowan", "color": "#123456"}]}
+    p = tmp_path / "old.json"
+    p.write_text(json.dumps(raw))
     board = load_board(p)
-    card = board.cards[0]
-    assert card.tags == ["Act 1"] and card.locations == ["Forest"]
-    assert card.characters == ["Mara", "Rowan"]
-    # older files had no custom_colors list: non-preset colors in use are recovered
+    assert board.cards[0].characters == ["Mara", "Rowan"]
+    # no custom_colors list: non-preset colors in use are recovered
     assert board.custom_colors == ["#123456"]
+
+
+def test_the_app_name_in_a_file_is_not_checked(tmp_path):
+    """Boards saved before a rename keep their old "app" value until saved again."""
+    p = tmp_path / "other.json"
+    p.write_text(json.dumps({"app": "Something else", "version": 12,
+                             "cards": [{"id": "a", "title": "Rowan"}]}), encoding="utf-8")
+    assert [c.title for c in load_board(p).cards] == ["Rowan"]
+    assert BoardData().to_dict()["app"] == APP_ID == "Heddle"  # saves use the current name
 
 
 def test_unknown_keys_are_ignored_for_forward_compatibility():

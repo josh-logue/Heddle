@@ -69,9 +69,8 @@ KIND_GROUP = "group"  # holds other cards (those whose `parent` is this card's i
 # name, and its description in the details. Always outside the story tools.
 KIND_STRAND = "strand"
 
-# Card fields holding multiple entries; v1 files used single strings for these.
+# Card fields holding multiple entries.
 LIST_FIELDS = ("tags", "characters", "locations")
-_LEGACY_RENAMES = {"tag": "tags", "location": "locations"}
 
 # Header colors offered for cards; new cards cycle through these.
 CARD_COLORS = [
@@ -581,7 +580,7 @@ class BoardData:
             raise ValueError("This file is not a Heddle board.")
         # One damaged entry mustn't make the whole board unopenable: skip it and say so.
         notes: list[str] = []
-        cards = _build_all(CardData, [_upgrade_card(c) for c in raw["cards"]])
+        cards = _build_all(CardData, raw["cards"])
         renewed = _renew_duplicate_ids(cards)  # duplicates would leave orphaned cards
         _note(notes, len(raw["cards"]) - len(cards), "damaged card", "skipped")
         _note(notes, renewed, "card", "given a new id (the id was used twice)")
@@ -745,18 +744,6 @@ def rename_in_list(values: list[str], old: str, new: str) -> list[str]:
     """Rename (case-insensitive) within a plain value list, merging duplicates."""
     targets = {old.strip().casefold(), new.strip().casefold()}
     return clean_list([new.strip() if v.casefold() in targets else v for v in values])
-
-
-def _upgrade_card(raw: Any) -> Any:
-    """Map v1 single-value keys (tag, location) onto v2 list keys."""
-    if not isinstance(raw, dict):
-        return raw
-    raw = dict(raw)
-    for old, new in _LEGACY_RENAMES.items():
-        if old in raw:
-            value = raw.pop(old)
-            raw.setdefault(new, value)
-    return raw  # CardData.__post_init__ splits any legacy comma strings
 
 
 def _dedupe_colors(colors: list[str]) -> list[str]:

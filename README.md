@@ -12,6 +12,8 @@ through the story, where characters are introduced, and loose ends.
 ## Setup
 
 ```powershell
+git clone https://github.com/josh-logue/Heddle.git
+cd Heddle
 py -3.13 -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
@@ -255,11 +257,6 @@ backups somewhere else.
 saved it (another computer via OneDrive, or a second Heddle window), saving asks whether to
 overwrite (backing up their version first) or save yours as a separate file. Autosave never
 overwrites such a change; it asks once, and pauses if you cancel.
-
-**Former names:** Heddle used to be called WarpingWeft, and StoryBoard before that. On the first
-run, preferences (theme, Open Recent, window layout…) saved under the newest former name are
-copied over, and its `backups`, `logs` and `recovery` folders are moved into
-`%LOCALAPPDATA%\Heddle\`. Boards saved under either name open as before.
 
 ## Licence
 

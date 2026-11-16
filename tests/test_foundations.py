@@ -28,7 +28,7 @@ def test_v3_fields_round_trip():
 
 
 def test_v2_file_loads_with_defaults():
-    raw = {"app": "StoryBoard", "version": 2, "cards": [{"id": "a"}, {"id": "b"}],
+    raw = {"version": 2, "cards": [{"id": "a"}, {"id": "b"}],
            "connections": [{"source": "a", "target": "b", "label": "x", "id": "c1"}]}
     board = BoardData.from_dict(raw)
     assert board.cards[0].pov == ""
