@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "help": "node scripts/help.ts"
   },
   "dependencies": {
     "react": "^19.3.1",

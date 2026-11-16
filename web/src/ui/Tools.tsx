@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { getOption } from "../platform/settings.ts";
 import { searchCards } from "../core/filters.ts";
 import {
   BUILTIN_STATUSES, BULK_LIST_FIELDS, CARD_COLORS, COLOR_NAMES, DISPLAY_DEFAULTS, KIND_GROUP, KIND_STRAND,
@@ -163,7 +164,8 @@ export function MultiEdit({ store, onDone, onClose }: { store: BoardStore; onDon
   const colours = [...CARD_COLORS, ...store.state.custom_colors.filter((c) => !(CARD_COLORS as readonly string[]).includes(c))];
   const statuses = [...BUILTIN_STATUSES, ...store.allValues("status").filter((s) => !BUILTIN_STATUSES.some((b) => casefold(b) === casefold(s)))];
   const ok = () => {
-    const withPending = (values: string[], key: string) => (pending[key]?.trim() ? [...values, pending[key]!] : values);
+    const keep = getOption("commit_pending_entries"); // Settings: what's still typed counts too
+    const withPending = (values: string[], key: string) => (keep && pending[key]?.trim() ? [...values, pending[key]!] : values);
     const edit = {
       color, status: status === KEEP ? null : status,
       add: Object.fromEntries(BULK_LIST_FIELDS.map((f) => [f, withPending(add[f]!, `add-${f}`)])),

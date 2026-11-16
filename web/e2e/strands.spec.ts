@@ -14,6 +14,7 @@ const selected = (page: Page) => page.evaluate(() => [...(window as unknown as {
 async function lantern(page: Page) {
   await page.goto("/?demo=lantern-tide");
   await expect(page.locator(".board-name")).toHaveText("Lantern Tide");
+  await page.waitForFunction(() => !!(window as unknown as { heddleCanvas?: { store: unknown } | null }).heddleCanvas?.store); // (WebKit is slower to start)
 }
 
 /** A card's middle on the page. */

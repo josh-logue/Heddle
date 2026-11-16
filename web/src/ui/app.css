@@ -1474,3 +1474,83 @@ label.block textarea {
   display: block;
   width: 100%;
 }
+
+/* ----- saving: autosave status, Open Recent, backups ----- */
+
+.save-status {
+  font-size: 0.85em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.menu-items button.recent {
+  padding-left: 22px;
+}
+
+.backup-list {
+  max-height: 280px;
+  overflow: auto;
+}
+
+/* ----- settings, error report, export ----- */
+
+.radios.column {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.block-check {
+  display: block;
+  padding: 2px 0;
+}
+
+.error-summary {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+/* ----- help ----- */
+
+.help-find {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+.help-body {
+  max-height: min(60vh, 560px);
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.help-body h3 {
+  margin: 12px 0 4px;
+  font-size: 1rem;
+}
+
+.help-entry {
+  display: grid;
+  grid-template-columns: 11em 1fr;
+  gap: 10px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+.help-entry dt {
+  font-weight: 600;
+}
+
+.help-entry dd {
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .help-entry {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

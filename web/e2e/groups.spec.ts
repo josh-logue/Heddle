@@ -25,6 +25,7 @@ async function open(page: Page) {
   await page.getByRole("button", { name: "Open a board…" }).click();
   await (await chooser).setFiles({ name: "groups.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(BOARD)) });
   await expect(page.locator(".board-name")).toHaveText("groups");
+  await page.waitForFunction(() => !!(window as unknown as { heddleCanvas?: { store: unknown } | null }).heddleCanvas?.store); // (WebKit is slower to start)
 }
 
 type Box = { x: number; y: number; w: number; h: number; headerH: number };

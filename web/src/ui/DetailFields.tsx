@@ -7,6 +7,7 @@ import { BUILTIN_STATUSES, cleanList } from "../core/model.ts";
 import { casefold } from "../core/pystr.ts";
 import type { BoardStore } from "../board/store.ts";
 import { TokenInput } from "./TokenInput.tsx";
+import { getOption } from "../platform/settings.ts";
 
 export interface DetailValues {
   tags: string[];
@@ -45,7 +46,9 @@ export function useDetailFields(store: BoardStore, data: DetailValues, prefix: s
   const povChoices = [...characters, ...suggest("characters").filter((c) => !characters.some((x) => casefold(x) === casefold(c)))];
 
   const values = (): DetailValues => {
-    const withPending = (list: string[], key: string) => cleanList([...list, pending[key] ?? ""]);
+    // Settings can turn this off: then only chips added with Enter count.
+    const keep = getOption("commit_pending_entries");
+    const withPending = (list: string[], key: string) => cleanList([...list, keep ? pending[key] ?? "" : ""]);
     const chars = withPending(characters, "characters");
     const dropped = pov && !chars.some((c) => casefold(c) === casefold(pov)) && characters.some((c) => casefold(c) === casefold(pov));
     return {

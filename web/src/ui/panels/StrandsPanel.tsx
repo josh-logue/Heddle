@@ -3,7 +3,7 @@ import { BUILTIN_STATUSES, RENAMABLE_FIELDS, makeStrandInfo, type StrandField, t
 import { casefold } from "../../core/pystr.ts";
 import type { BoardStore } from "../../board/store.ts";
 
-import { STRAND_MIME } from "../../canvas/controller.ts";
+import { STRAND_MIME, strandDragging } from "../../canvas/controller.ts";
 const COMMIT_DELAY_MS = 700;
 export const KIND_LABELS: Record<StrandKind, string> = { tags: "Tags", characters: "Characters", locations: "Locations", status: "Statuses" };
 export const KIND_ONE: Record<StrandKind, string> = { tags: "tag", characters: "character", locations: "location", status: "status" };
@@ -76,7 +76,9 @@ export function StrandsPanel({ store, act }: { store: BoardStore; act: StrandAct
                             e.dataTransfer.setData(STRAND_MIME, JSON.stringify({ kind, name: n }));
                             e.dataTransfer.setData("text/plain", n);
                             e.dataTransfer.effectAllowed = "copy";
+                            strandDragging.current = { kind, name: n };
                           }}
+                          onDragEnd={() => (strandDragging.current = null)}
                           title={has ? "Has a description or fields" : undefined}>
                         <span>{n}{has ? " ✎" : ""}</span>
                         <span className="muted">{usageText(cards, routes, sc, kind === "status" && BUILTIN.has(key))}</span>

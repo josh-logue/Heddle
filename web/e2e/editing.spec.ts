@@ -50,6 +50,7 @@ async function newBoard(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Start an empty board" }).click();
   await expect(page.locator(".board-name")).toHaveText("Untitled");
+  await page.waitForFunction(() => !!(window as unknown as { heddleCanvas?: { store: unknown } | null }).heddleCanvas?.store); // (WebKit is slower to start)
 }
 
 async function addCard(page: Page, title: string, x: number, y: number) {
@@ -227,6 +228,7 @@ test("copies and pastes with the keyboard, and duplicates with Ctrl+D", async ({
   await expect(page.getByRole("status")).toContainText("Copied 1 card");
   await page.mouse.move(700, 450);
   await page.keyboard.press("Control+v");
+  await expect.poll(async () => (await board(page)).cards.length).toBe(2);
   let cards = (await board(page)).cards;
   expect(cards.map((c) => c.title)).toEqual(["Rowan", "Rowan"]);
   expect(cards[1]!.id).not.toBe(cards[0]!.id);

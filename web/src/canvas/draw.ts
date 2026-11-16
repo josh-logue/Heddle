@@ -36,18 +36,42 @@ export interface DrawState {
   dropTarget?: string;
   /** Where a new card would go (dropping a handle on empty canvas). */
   ghost?: { rect: Rect; color: string };
+  /** Drawing for an image export: no grid, selection, handles, toggles or hover. */
+  exporting?: ExportLook;
+  /** Makes the paths drawn (an SVG export records them instead). */
+  newPath?: () => Path2D;
 }
 
+export interface ExportLook {
+  /** Keep the filter's and highlight's fading (and the thread). */
+  asShown: boolean;
+  /** No background at all (else the canvas colour, without the grid). */
+  transparent: boolean;
+  /** Just these cards (and the arrows between them); null: everything. */
+  only: ReadonlySet<string> | null;
+}
+
+let makePath: () => Path2D = () => new Path2D();
+
+/** Selected, as drawn: an export shows no selection. */
+const isSelected = (s: DrawState, id: string) => !s.exporting && s.store.selected.has(id);
+/** Is the highlight (and thread) drawn? Not on an export unless it keeps the look. */
+const showsHighlight = (s: DrawState) => !s.exporting || s.exporting.asShown;
+
 export function drawBoard(ctx: CanvasRenderingContext2D, s: DrawState): void {
+  makePath = s.newPath ?? (() => new Path2D());
   const { camera, theme, dpr } = s;
   const display = s.store.state.display;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = theme.canvasBg;
-  ctx.fillRect(0, 0, camera.width, camera.height);
+  if (!s.exporting?.transparent) {
+    ctx.fillStyle = theme.canvasBg;
+    ctx.fillRect(0, 0, camera.width, camera.height);
+  }
   const k = camera.scale * dpr;
   ctx.setTransform(k, 0, 0, k, -camera.ox * k, -camera.oy * k);
   const view = camera.visible();
-  if (display.show_grid) drawGrid(ctx, view, camera.scale, theme);
+  if (display.show_grid && !s.exporting) drawGrid(ctx, view, camera.scale, theme);
+  const only = s.exporting?.only ?? null;
 
   const lod = camera.scale;
   const { groups, cards } = paintOrder(s.store.boxes);
@@ -55,9 +79,12 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: DrawState): void {
   const lifted = s.lifted;
   const below = lifted ? cards.filter((c) => !lifted.has(c.card.id)) : cards;
   const above = lifted ? cards.filter((c) => lifted.has(c.card.id)) : [];
-  const onScreen = (b: Rect) => overlaps(b, view, 12);
+  const onScreen = (b: CardBox) => overlaps(b, view, 12) && (!only || only.has(b.card.id));
   for (const g of groups) if (onScreen(g)) drawCard(ctx, g, s, display, lod);
-  for (const a of s.store.arrows) if (overlaps(a.path.bounds(), view, 40)) drawArrow(ctx, a, s, lod);
+  for (const a of s.store.arrows) {
+    if (only && !(only.has(a.from) && only.has(a.to))) continue;
+    if (overlaps(a.path.bounds(), view, 40)) drawArrow(ctx, a, s, lod);
+  }
   drawThreadLine(ctx, s); // above the arrows, beneath the cards
   for (const c of below) if (onScreen(c)) drawCard(ctx, c, s, display, lod);
   for (const c of above) if (onScreen(c)) drawCard(ctx, c, s, display, lod);
@@ -76,6 +103,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: DrawState): void {
 
 /** Faded: filtered out, or left unlit by a highlight. */
 function faded(s: DrawState, id: string): boolean {
+  if (!showsHighlight(s)) return false;
   return s.store.dimmed.has(id) || (s.store.highlight !== null && !s.store.lit.has(id));
 }
 
@@ -83,7 +111,7 @@ function faded(s: DrawState, id: string): boolean {
  *  cards as drawn, or of the collapsed group hiding one). */
 function drawThreadLine(ctx: CanvasRenderingContext2D, s: DrawState): void {
   const thread = s.store.thread;
-  if (!thread || thread.ids.length < 2) return;
+  if (!thread || thread.ids.length < 2 || !showsHighlight(s)) return;
   const points: [number, number][] = [];
   for (const id of thread.ids) {
     const b = s.store.boxes.get(s.store.structure.visibleEnd(id));
@@ -108,8 +136,8 @@ function overlaps(r: Rect, v: Rect, margin: number): boolean {
 
 function drawGrid(ctx: CanvasRenderingContext2D, view: Rect, scale: number, t: Theme): void {
   const step = scale >= 0.5 ? GRID : GRID * MAJOR_EVERY;
-  const minor = new Path2D();
-  const major = new Path2D();
+  const minor = makePath();
+  const major = makePath();
   for (let x = Math.floor(view.x / step) * step; x < view.x + view.w; x += step) {
     const p = Math.round(x / GRID) % MAJOR_EVERY === 0 ? major : minor;
     p.moveTo(x, view.y);
@@ -128,7 +156,7 @@ function drawGrid(ctx: CanvasRenderingContext2D, view: Rect, scale: number, t: T
 }
 
 function roundRect(x: number, y: number, w: number, h: number, r: number): Path2D {
-  const p = new Path2D();
+  const p = makePath();
   p.roundRect(x, y, w, h, r);
   return p;
 }
@@ -160,7 +188,7 @@ function drawCard(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, displ
   if (lod < LOD_TITLE) {
     ctx.save();
     if (faded(s, b.card.id)) ctx.globalAlpha = DIMMED_OPACITY;
-    drawOverview(ctx, b, t, lod, s.store.selected.has(b.card.id));
+    drawOverview(ctx, b, t, lod, isSelected(s, b.card.id));
     ctx.restore();
     return;
   }
@@ -252,14 +280,14 @@ function drawCard(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, displ
   let width = 1;
   let stroke = t.cardBorder;
   let dashed = false;
-  if (s.store.selected.has(b.card.id)) {
+  if (isSelected(s, b.card.id)) {
     stroke = t.selected;
     width = 2.5;
-  } else if (s.dropTarget === b.card.id || s.store.flash === b.card.id) {
+  } else if (!s.exporting && (s.dropTarget === b.card.id || s.store.flash === b.card.id)) {
     stroke = t.dark ? lighter(color, 130) : darker(color, 115);
     width = 2.5;
     dashed = true;
-  } else if (s.store.highlight && s.store.lit.has(b.card.id)) {
+  } else if (s.store.highlight && s.store.lit.has(b.card.id) && showsHighlight(s)) {
     stroke = t.highlight;
     width = s.store.highlight.focus === b.card.id ? 3.5 : 2.5;
   } else if (b.isGroup) {
@@ -268,15 +296,15 @@ function drawCard(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, displ
   }
   ctx.strokeStyle = stroke;
   ctx.lineWidth = width;
-  if (dashed || (b.card.outside_story && display.story_tools && !s.store.selected.has(b.card.id))) {
+  if (dashed || (b.card.outside_story && display.story_tools && !isSelected(s, b.card.id))) {
     ctx.setLineDash([4 * width, 2 * width]);
   }
   ctx.stroke(path);
   ctx.setLineDash([]);
 
-  if (b.isGroup && !b.card.collapsed) drawResizeGrip(ctx, b, t, hover === "resize");
+  if (b.isGroup && !b.card.collapsed && !s.exporting) drawResizeGrip(ctx, b, t, hover === "resize");
 
-  if (hasPort(b, display)) {
+  if (hasPort(b, display) && !s.exporting) {
     const [px, py] = portCenter(b);
     const radius = PORT_RADIUS + (hover === "port" ? 2 : 0);
     ctx.beginPath();
@@ -339,7 +367,7 @@ function drawHeader(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, dis
   const collapsed = b.isGroup && b.card.collapsed;
   if (b.isGroup && showCount && (display.show_group_count || collapsed)) {
     let count = `${b.memberCount} card${b.memberCount !== 1 ? "s" : ""}`;
-    const found = s.store.searchHits.get(b.card.id);
+    const found = s.exporting ? 0 : s.store.searchHits.get(b.card.id);
     if (collapsed && found) count += ` · ${found} found`; // matches folded away inside
     const w = m.width(count, "small") + 8;
     ctx.fillStyle = withAlpha(fg, 190);
@@ -354,7 +382,7 @@ function drawHeader(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, dis
   }
   let left = PAD;
   if (b.isGroup) {
-    drawFold(ctx, fg, collapsed, hover === "fold");
+    if (!s.exporting) drawFold(ctx, fg, collapsed, hover === "fold");
     left += 16 + 2;
   }
   if (b.isStrand) {
@@ -364,7 +392,7 @@ function drawHeader(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, dis
     drawCentred(ctx, m, { x: left, y: 0, w, h: HEADER_HEIGHT }, mark, "title");
     left += w;
   }
-  const badge = s.store.threadNumber(b.card.id);
+  const badge = showsHighlight(s) ? s.store.threadNumber(b.card.id) : 0;
   if (badge) { // its number in the character thread showing
     const d = BADGE_SIZE;
     const cx = left - 3 + d / 2;
@@ -379,7 +407,7 @@ function drawHeader(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, dis
   const title = elide(m, b.card.title || "Untitled", "title", right - left);
   ctx.fillStyle = fg;
   drawCentred(ctx, m, { x: left, y: 0, w: right - left, h: HEADER_HEIGHT }, title, "title");
-  drawToggle(ctx, b, fg, hover === "toggle");
+  if (!s.exporting) drawToggle(ctx, b, fg, hover === "toggle");
 }
 
 /** A small boxed − (collapse) or + (expand) at the left of a group's title. */
@@ -435,10 +463,10 @@ function tracePath(ctx: CanvasRenderingContext2D, a: ArrowShape): void {
 }
 
 function drawArrow(ctx: CanvasRenderingContext2D, a: ArrowShape, s: DrawState, lod: number): void {
-  const selected = s.store.selectedArrows.has(a.conn.id);
-  const h = s.store.highlight;
+  const selected = !s.exporting && s.store.selectedArrows.has(a.conn.id);
+  const h = showsHighlight(s) ? s.store.highlight : null;
   const unlit = h !== null && !h.arrows.has(a.conn.id);
-  const fade = s.store.dimmed.has(a.conn.source) || s.store.dimmed.has(a.conn.target) || unlit;
+  const fade = (showsHighlight(s) && (s.store.dimmed.has(a.conn.source) || s.store.dimmed.has(a.conn.target))) || unlit;
   ctx.save();
   if (fade) ctx.globalAlpha = DIMMED_OPACITY;
   try {
@@ -450,7 +478,7 @@ function drawArrow(ctx: CanvasRenderingContext2D, a: ArrowShape, s: DrawState, l
 
 function drawArrowShape(ctx: CanvasRenderingContext2D, a: ArrowShape, s: DrawState, lod: number, selected: boolean): void {
   const t = s.theme;
-  const lit = s.store.highlight?.arrows.has(a.conn.id) ?? false;
+  const lit = showsHighlight(s) && (s.store.highlight?.arrows.has(a.conn.id) ?? false);
   const color = selected ? t.selected : lit ? t.highlight : arrowColor(a, t, s.hover.arrow === a.conn.id);
   if (lod < LOD_OVERVIEW) { // far zoomed out: a plain 1px line
     tracePath(ctx, a);

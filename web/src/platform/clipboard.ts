@@ -9,6 +9,8 @@
 import { CLIPBOARD_MIME, boardFromDict, boardToDict, type BoardData } from "../core/model.ts";
 
 let local: string | null = null;
+/** The plain text put on the clipboard with `local` (the cards' titles). */
+let localText: string | null = null;
 
 function encode(fragment: BoardData): [json: string, text: string] {
   return [JSON.stringify(boardToDict(fragment)), fragment.cards.map((c) => c.title).join("\n")];
@@ -30,6 +32,7 @@ function decode(json: string | null | undefined): BoardData | null {
 export function writeFragment(fragment: BoardData, event?: ClipboardEvent): void {
   const [json, text] = encode(fragment);
   local = json;
+  localText = text;
   if (event?.clipboardData) {
     event.clipboardData.setData(CLIPBOARD_MIME, json);
     event.clipboardData.setData("text/plain", text);
@@ -43,9 +46,12 @@ export function writeFragment(fragment: BoardData, event?: ClipboardEvent): void
 export function readFragment(event?: ClipboardEvent): BoardData | null {
   const data = event?.clipboardData;
   if (data) {
-    const found = decode(data.getData(CLIPBOARD_MIME)) ?? decode(data.getData("text/plain"));
+    const text = data.getData("text/plain");
+    const found = decode(data.getData(CLIPBOARD_MIME)) ?? decode(text);
     if (found) return found;
-    if (data.types.length) return null; // something else was copied since: not our cards
+    // Something else (other text) was copied since: not our cards. A browser that drops our
+    // own type keeps at most the titles (or nothing): then these are this tab's cards.
+    if (text.trim() && text !== localText) return null;
   }
   return decode(local);
 }

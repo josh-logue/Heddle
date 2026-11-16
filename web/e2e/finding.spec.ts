@@ -23,6 +23,7 @@ async function selectCard(page: Page, id: string) {
 async function lantern(page: Page) {
   await page.goto("/?demo=lantern-tide");
   await expect(page.locator(".board-name")).toHaveText("Lantern Tide");
+  await page.waitForFunction(() => !!(window as unknown as { heddleCanvas?: { store: unknown } | null }).heddleCanvas?.store); // (WebKit is slower to start)
 }
 
 async function openPanel(page: Page, name: string) {

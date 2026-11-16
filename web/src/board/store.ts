@@ -222,9 +222,28 @@ export class BoardStore {
     return boardToJson(this.board);
   }
 
-  markSaved(): void {
-    this.history.markSaved();
+  /** `state` (default: the board now) is what's in the file. */
+  markSaved(state: BoardState | null = this.history.current): void {
+    this.history.saved = state;
     this.notify();
+  }
+
+  /** The board as last committed (not a drag or nudge still in progress), as file text,
+   *  with the state it is: what saving writes, so it can be marked saved afterwards even
+   *  if the board changed while the file was being written. */
+  committedJson(): [string, BoardState] {
+    const s = this.history.current ?? this.state;
+    return [boardToJson(boardFromState(s)), s];
+  }
+
+  /** Replace the whole board (restoring a backup): one undoable change. */
+  replaceBoard(board: BoardData): void {
+    this.selected.clear();
+    this.selectedArrows.clear();
+    this.details.clear();
+    this.shift.clear();
+    this.loans.clear();
+    this.commit(stateFromBoard(board));
   }
 
   card(id: string): CardData | undefined {

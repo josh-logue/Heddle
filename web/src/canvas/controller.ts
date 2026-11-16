@@ -23,6 +23,10 @@ import { canPasteHere, readFragment, writeFragment } from "../platform/clipboard
 
 /** What a strand dragged from the Strands panel carries (ui/panels/StrandsPanel.tsx). */
 export const STRAND_MIME = "application/x-heddle-strand";
+
+/** The strand being dragged from this page's Strands panel, if any. Safari (WebKit) doesn't
+ *  show a drag's own data types to the drop target, so the board looks here too. */
+export const strandDragging: { current: { kind: StrandKind; name: string } | null } = { current: null };
 const CLICK_SLOP = 4; // px a press may move and still count as a click
 const TOOLTIP_DELAY_MS = 600;
 const NEW_CARD_MIN_DRAG = 40; // a handle dropped this far out on empty canvas makes a card
@@ -45,6 +49,8 @@ export interface CanvasHost {
   read(id: string): void;
   /** Ask which character's thread to show (T). */
   chooseThread(): void;
+  /** Settings: the plain wheel zooms (and Ctrl+wheel scrolls). */
+  wheelZooms(): boolean;
 }
 
 type Listener = () => void;
@@ -96,7 +102,7 @@ export class BoardCanvas {
     });
     this.on(canvas, "dblclick", (e) => this.doubleClick(e as MouseEvent));
     // A strand dragged from the Strands panel (its kind and name come with the drop).
-    const strandDrag = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes(STRAND_MIME);
+    const strandDrag = (e: DragEvent) => strandDragging.current !== null || Array.from(e.dataTransfer?.types ?? []).includes(STRAND_MIME);
     this.on(canvas, "dragover", (e) => {
       const d = e as DragEvent;
       if (!strandDrag(d) || !this.store) return;
@@ -117,7 +123,9 @@ export class BoardCanvas {
       if (!strandDrag(d) || !this.store) return;
       d.preventDefault();
       try {
-        const { kind, name } = JSON.parse(d.dataTransfer!.getData(STRAND_MIME)) as { kind: StrandKind; name: string };
+        const raw = d.dataTransfer?.getData(STRAND_MIME);
+        const { kind, name } = raw ? JSON.parse(raw) as { kind: StrandKind; name: string } : strandDragging.current!;
+        strandDragging.current = null;
         const [x, y] = this.camera.toScene(...this.local(d));
         const [, notice] = this.store.dropStrand(kind, name, x, y, this.host.snapToGrid());
         if (notice) this.host.notice(notice);
@@ -728,7 +736,7 @@ export class BoardCanvas {
   private wheel(e: WheelEvent): void {
     e.preventDefault();
     const scale = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
-    if (e.ctrlKey || e.metaKey) {
+    if ((e.ctrlKey || e.metaKey) !== this.host.wheelZooms()) {
       const [x, y] = this.local(e);
       this.zoomBy(ZOOM_STEP ** (-(e.deltaY * scale) / 100), x, y);
       return;

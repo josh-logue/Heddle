@@ -31,7 +31,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: web
@@ -59,10 +59,19 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Browser tests
+      - name: Browser tests (Chromium and WebKit)
         run: |
-          npx playwright install --with-deps chromium
-          npx playwright test
+          npx playwright install --with-deps chromium webkit firefox
+          npx playwright test --project=chromium --project=webkit
+
+      - name: Offline (the built site, with its service worker)
+        run: npx playwright test -c playwright.offline.config.ts
+
+      # Not yet run against the app anywhere else (it won't start on the development
+      # machine): reported, but not blocking, until it has passed here.
+      - name: Browser tests (Firefox)
+        continue-on-error: true
+        run: npx playwright test --project=firefox
 
       - uses: actions/upload-pages-artifact@v3
         with:
