@@ -16,12 +16,15 @@ import type { TextMeasurer } from "../board/text.ts";
 import { Camera, ZOOM_STEP } from "./camera.ts";
 import { drawBoard, type Hover } from "./draw.ts";
 import { hitTest } from "./hit.ts";
-import { LIGHT, withAlpha, type Theme } from "./theme.ts";
+import { LIGHT, darker, withAlpha, type Theme } from "./theme.ts";
+import { buildMenu, type MenuItem } from "./menus.ts";
+import { canPasteHere, readFragment, writeFragment } from "../platform/clipboard.ts";
 
 const CLICK_SLOP = 4; // px a press may move and still count as a click
 const TOOLTIP_DELAY_MS = 600;
 const NEW_CARD_MIN_DRAG = 40; // a handle dropped this far out on empty canvas makes a card
 const NUDGE_SETTLE_MS = 500; // a burst of nudges closer together than this is one undo step
+const FRAME_EDGE_HIT = 14; // this close to a group's frame counts as on its edge
 
 export interface CanvasHost {
   editCard(id: string, isNew: boolean): void;
@@ -31,6 +34,8 @@ export interface CanvasHost {
   /** A short message for the status line ("nothing to reverse"). */
   notice(text: string): void;
   snapToGrid(): boolean;
+  /** Show a right-click menu at a point on the page. */
+  contextMenu(items: MenuItem[], clientX: number, clientY: number): void;
 }
 
 type Listener = () => void;
@@ -54,6 +59,9 @@ export class BoardCanvas {
   private gesture: Gesture | null = null;
   private pinch: { dist: number; mx: number; my: number } | null = null;
   private spaceHeld = false;
+  /** Connect to…: the dashed line follows the pointer until a click picks the target. */
+  private linking: { source: string; end: [number, number] } | null = null;
+  private suppressMenu = false;
   private lastPointer: [number, number] | null = null;
   private tooltipTimer = 0;
   private nudgeTimer = 0;
@@ -76,7 +84,18 @@ export class BoardCanvas {
     });
     this.on(canvas, "dblclick", (e) => this.doubleClick(e as MouseEvent));
     this.on(canvas, "wheel", (e) => this.wheel(e as WheelEvent), { passive: false });
-    this.on(canvas, "contextmenu", (e) => e.preventDefault());
+    this.on(canvas, "contextmenu", (e) => this.contextMenu(e as MouseEvent));
+    // Copy, cut and paste reach the board while it has the keyboard (not a text box).
+    const mine = () => document.activeElement === canvas;
+    this.on(document, "copy", (e) => {
+      if (mine() && this.copy(e as ClipboardEvent)) e.preventDefault();
+    });
+    this.on(document, "cut", (e) => {
+      if (mine() && this.cut(e as ClipboardEvent)) e.preventDefault();
+    });
+    this.on(document, "paste", (e) => {
+      if (mine() && this.paste(e as ClipboardEvent)) e.preventDefault();
+    });
     this.on(canvas, "keydown", (e) => this.keyDown(e as KeyboardEvent));
     // Space pans whenever the pointer is over the canvas, unless you're typing somewhere.
     this.on(window, "keydown", (e) => {
@@ -204,7 +223,18 @@ export class BoardCanvas {
     }
     const g = this.gesture;
     const lifted = g?.kind === "move" && g.moved ? this.liftedIds(g.roots) : undefined;
-    drawBoard(ctx, { store: this.store, camera: this.camera, theme: this.theme, m: this.m, hover: this.hover, dpr, lifted });
+    const link = g?.kind === "connect" ? { source: g.source, end: g.end, click: false }
+      : this.linking ? { ...this.linking, click: true } : null;
+    let dropTarget: string | undefined;
+    let ghost: { rect: Rect; color: string } | undefined;
+    if (link) {
+      dropTarget = this.connectTarget(link.source, link.end[0], link.end[1], link.click) ?? undefined;
+      if (!dropTarget && !link.click && this.canCreateAt(link.source, link.end[0], link.end[1])) {
+        const [x, y] = this.camera.toScene(...link.end);
+        ghost = { rect: this.newCardRect(link.source, x, y), color: this.store.card(link.source)!.color };
+      }
+    }
+    drawBoard(ctx, { store: this.store, camera: this.camera, theme: this.theme, m: this.m, hover: this.hover, dpr, lifted, dropTarget, ghost });
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (g?.kind === "box") {
       const r = screenRect(g.x, g.y, g.end[0], g.end[1]);
@@ -213,16 +243,16 @@ export class BoardCanvas {
       ctx.strokeStyle = "#4a7fc1";
       ctx.lineWidth = 1;
       ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w, r.h);
-    } else if (g?.kind === "connect") {
-      const src = this.store.boxes.get(g.source);
+    } else if (link) {
+      const src = this.store.boxes.get(link.source);
       if (src) {
         const [px, py] = this.camera.toScreen(...portCenter(src));
-        ctx.strokeStyle = this.theme.selected;
+        ctx.strokeStyle = darker(src.card.color, 110); // the source card's colour, as on the desktop
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 4]);
         ctx.beginPath();
         ctx.moveTo(px, py);
-        ctx.lineTo(g.end[0], g.end[1]);
+        ctx.lineTo(link.end[0], link.end[1]);
         ctx.stroke();
         ctx.setLineDash([]);
       }
@@ -279,6 +309,15 @@ export class BoardCanvas {
       return;
     }
     if (!this.store) return;
+    if (this.linking) { // Connect to…: a click picks the target; anything else cancels
+      const { source } = this.linking;
+      this.linking = null;
+      this.updateCursor();
+      if (e.button === 0) this.finishConnect(source, x, y, false, true);
+      this.suppressMenu = e.button === 2;
+      this.redraw();
+      return;
+    }
     const touch = e.pointerType === "touch";
     if (e.button === 1 || (e.button === 0 && this.spaceHeld)) {
       if (e.button === 1) e.preventDefault();
@@ -337,6 +376,10 @@ export class BoardCanvas {
     this.lastPointer = [x, y];
     const last = this.pointers.get(e.pointerId);
     if (!last) {
+      if (this.linking) {
+        this.linking.end = [x, y];
+        this.redraw();
+      }
       const hit = this.hitAt(x, y);
       this.setHover(hit);
       this.scheduleTooltip(hit, e.clientX, e.clientY);
@@ -440,7 +483,7 @@ export class BoardCanvas {
         this.redraw();
         return;
       case "connect":
-        this.finishConnect(g.source, x, y);
+        this.finishConnect(g.source, x, y, e.ctrlKey || e.metaKey);
         this.redraw();
         return;
       case "pan":
@@ -448,25 +491,134 @@ export class BoardCanvas {
     }
   }
 
-  private finishConnect(source: string, sx: number, sy: number): void {
+  /** Start Connect to… from a card: the next click on another card connects them. */
+  startConnect(source: string): void {
+    if (!this.store?.boxes.has(source)) return;
+    this.cancelGesture();
+    const src = this.store.boxes.get(source)!;
+    this.linking = { source, end: this.lastPointer ?? this.camera.toScreen(...portCenter(src)) };
+    this.canvas.style.cursor = "crosshair";
+    this.canvas.focus({ preventScroll: true });
+    this.host.notice("Click the card to connect to (Esc cancels).");
+    this.redraw();
+  }
+
+  get isLinking(): boolean {
+    return this.linking !== null;
+  }
+
+  /** The card or group a drop or click at screen point (sx, sy) would connect `source`
+   *  to. Dragging a handle onto its own group connects to the group (a last card) only
+   *  on the group's header or frame edge; inside it is where a new card would go. */
+  private connectTarget(source: string, sx: number, sy: number, click: boolean): string | null {
+    const store = this.store!;
+    const target = this.hitAt(sx, sy).card;
+    if (!target || target === source) return null;
+    if (!click && store.structure.isInside(source, target)) {
+      const b = store.boxes.get(target)!;
+      const [x, y] = this.camera.toScene(sx, sy);
+      const onEdge = y - b.y <= b.headerH || x - b.x <= FRAME_EDGE_HIT || b.x + b.w - x <= FRAME_EDGE_HIT
+        || b.y + b.h - y <= FRAME_EDGE_HIT;
+      if (!onEdge) return null;
+    }
+    return target;
+  }
+
+  /** Would letting go of a handle drag here make a new card? On empty canvas (or empty
+   *  space in a group), after a real drag rather than a slip. */
+  private canCreateAt(source: string, sx: number, sy: number): boolean {
     const store = this.store!;
     const hit = this.hitAt(sx, sy);
-    const target = hit.card;
-    if (target && target !== source) {
+    if (hit.card && !store.boxes.get(hit.card)?.isGroup) return false;
+    const [px, py] = this.camera.toScreen(...portCenter(store.boxes.get(source)!));
+    return Math.hypot(sx - px, sy - py) >= NEW_CARD_MIN_DRAG;
+  }
+
+  /** Where a card made by dropping at (x, y) goes: its side facing the source touches the
+   *  pointer (so the arrow ends where it was dropped), centred on it vertically. */
+  private newCardRect(source: string, x: number, y: number): Rect {
+    const [w, h] = this.store!.newCardSize();
+    const left = x < portCenter(this.store!.boxes.get(source)!)[0] ? x - w : x;
+    return { x: left, y: y - h / 2, w, h };
+  }
+
+  private finishConnect(source: string, sx: number, sy: number, quick: boolean, click = false): void {
+    const store = this.store!;
+    const target = this.connectTarget(source, sx, sy, click);
+    if (target) {
       if (!store.connect(source, target)) this.host.notice("Those cards are already connected that way.");
       return;
     }
-    if (target) return; // let go on itself: a slip
-    const src = store.boxes.get(source)!;
-    const [px, py] = this.camera.toScreen(...portCenter(src));
-    if (Math.hypot(sx - px, sy - py) < NEW_CARD_MIN_DRAG) return;
-    // Empty canvas: a new card there, in the source's colour, already connected. Its
-    // side facing the source touches the pointer.
+    // Connect to… never makes cards: a click on empty canvas just cancels it.
+    if (click || !this.canCreateAt(source, sx, sy)) return;
+    // A new card there (in the group under it), in the source's colour, already
+    // connected: one undo step. Ctrl+drop skips the editor.
     const [x, y] = this.camera.toScene(sx, sy);
-    const left = x < portCenter(src)[0] ? x - CARD_WIDTH : x;
-    const card = store.addCard(left + CARD_WIDTH / 2, y + 20 - src.closedH / 2, this.host.snapToGrid(), src.card.color);
+    const rect = this.newCardRect(source, x, y);
+    const group = store.groupAt(x, y) ?? undefined;
+    const card = store.addCard(rect.x + CARD_WIDTH / 2, rect.y + 20, this.host.snapToGrid(), store.card(source)!.color, group);
     store.connectNew(source, card.id);
-    this.host.editCard(card.id, true);
+    if (quick) store.commit();
+    else this.host.editCard(card.id, true);
+  }
+
+  /** Right-click: the menu for what's under the pointer. */
+  private contextMenu(e: MouseEvent): void {
+    e.preventDefault();
+    if (this.suppressMenu) {
+      this.suppressMenu = false;
+      return;
+    }
+    const store = this.store;
+    if (!store) return;
+    const [sx, sy] = this.local(e);
+    const [x, y] = this.camera.toScene(sx, sy);
+    const items = buildMenu(store, this.hitAt(sx, sy), x, y, {
+      editCard: (id) => this.host.editCard(id, false),
+      editArrows: (ids) => this.host.editArrows(ids),
+      addCardAt: (cx, cy, group) => {
+        const card = store.addCard(cx, cy, this.host.snapToGrid(), undefined, group);
+        this.host.editCard(card.id, true);
+      },
+      startConnect: (id) => this.startConnect(id),
+      copy: () => this.copy(),
+      cut: () => this.cut(),
+      pasteAt: (px, py) => this.paste(null, [px, py]),
+      canPaste: canPasteHere,
+      deleteSelection: () => void this.deleteSelection(),
+      notice: (text) => this.host.notice(text),
+    });
+    this.host.contextMenu(items, e.clientX, e.clientY);
+  }
+
+  // ----- clipboard -------------------------------------------------------------------------
+
+  copy(event?: ClipboardEvent): boolean {
+    const fragment = this.store?.selectionFragment();
+    if (!fragment) return false;
+    writeFragment(fragment, event);
+    const n = fragment.cards.length;
+    this.host.notice(`Copied ${n} card${n !== 1 ? "s" : ""}`);
+    return true;
+  }
+
+  cut(event?: ClipboardEvent): boolean {
+    const fragment = this.store?.selectionFragment();
+    if (!fragment) return false;
+    writeFragment(fragment, event);
+    this.store!.cut();
+    return true;
+  }
+
+  /** Paste copied cards: at `at`, else at the pointer if it's over the board, else just
+   *  beside the originals. */
+  paste(event: ClipboardEvent | null, at?: [number, number]): boolean {
+    const store = this.store;
+    const fragment = readFragment(event ?? undefined);
+    if (!store || !fragment) return false;
+    const point = at ?? (this.lastPointer ? this.camera.toScene(...this.lastPointer) : null);
+    store.paste(fragment, point);
+    return true;
   }
 
   private doubleClick(e: MouseEvent): void {
@@ -524,7 +676,11 @@ export class BoardCanvas {
     const ctrl = e.ctrlKey || e.metaKey;
     const arrows: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     if (e.key === "Escape") {
-      if (this.gesture) this.cancelGesture();
+      if (this.linking) {
+        this.linking = null;
+        this.updateCursor();
+        this.redraw();
+      } else if (this.gesture) this.cancelGesture();
       else store.clearSelection();
       e.preventDefault();
     } else if (e.key in arrows && !ctrl && !e.altKey && store.selected.size) {
@@ -541,6 +697,12 @@ export class BoardCanvas {
       e.preventDefault();
       if (store.selected.size === 1) this.host.editCard([...store.selected][0]!, false);
       else if (!store.selected.size) this.host.editArrows([...store.selectedArrows]);
+    } else if (ctrl && !e.shiftKey && e.code === "KeyD") {
+      e.preventDefault(); // (the browser's bookmark key)
+      store.duplicate();
+    } else if (!ctrl && !e.altKey && !e.shiftKey && e.code === "KeyL" && store.selected.size === 1) {
+      e.preventDefault();
+      this.startConnect([...store.selected][0]!);
     } else if (ctrl && !e.shiftKey && e.code === "KeyA") {
       e.preventDefault();
       store.selectAll();

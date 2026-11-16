@@ -14,6 +14,8 @@ import { BoardView } from "./BoardView.tsx";
 import { DEMOS, demoById, type Demo } from "./demos.ts";
 import { Confirm } from "./Dialog.tsx";
 import { ArrowEditor, CardEditor } from "./Editors.tsx";
+import { ContextMenu } from "./ContextMenu.tsx";
+import type { MenuItem } from "../canvas/menus.ts";
 
 const THEMES = ["system", "light", "dark"] as const;
 type ThemeChoice = (typeof THEMES)[number];
@@ -40,7 +42,8 @@ interface Shown {
 type Modal =
   | { kind: "card"; id: string; isNew: boolean }
   | { kind: "arrows"; ids: string[] }
-  | { kind: "confirm"; message: string; okLabel: string; resolve: (yes: boolean) => void };
+  | { kind: "confirm"; message: string; okLabel: string; resolve: (yes: boolean) => void }
+  | { kind: "menu"; items: MenuItem[]; x: number; y: number };
 
 export function App() {
   const measurer = useMemo(() => canvasMeasurer(), []);
@@ -290,7 +293,15 @@ export function App() {
     confirm: (message) => confirm(message),
     notice: (text) => setNotice(text),
     snapToGrid: () => snap,
+    contextMenu: (items, x, y) => setModal({ kind: "menu", items, x, y }),
   }), [confirm, snap]);
+
+  const closeMenu = useCallback(() => {
+    setModal((m) => (m?.kind === "menu" ? null : m));
+    requestAnimationFrame(() => {
+      if (!document.querySelector("dialog[open]")) canvas?.canvas.focus({ preventScroll: true });
+    });
+  }, [canvas]);
 
   const closeModal = () => {
     setModal(null);
@@ -393,18 +404,18 @@ export function App() {
         )}
       </header>
 
-      {(error || notice || (shown && shown.notes.length > 0)) && (
-        <div className={error ? "notice error" : "notice"} role={error ? "alert" : "status"}>
-          <span>{error || notice || `Opened with repairs: ${shown!.notes.join("; ")}.`}</span>
-          <button type="button" aria-label="Dismiss" onClick={() => {
-            if (error) setError("");
-            else if (notice) setNotice("");
-            else setShown({ ...shown!, notes: [] });
-          }}>×</button>
-        </div>
-      )}
-
       <main className="main">
+        {(error || notice || (shown && shown.notes.length > 0)) && (
+          <div className={error ? "notice error" : "notice"} role={error ? "alert" : "status"}>
+            <span>{error || notice || `Opened with repairs: ${shown!.notes.join("; ")}.`}</span>
+            <button type="button" aria-label="Dismiss" onClick={() => {
+              if (error) setError("");
+              else if (notice) setNotice("");
+              else setShown({ ...shown!, notes: [] });
+            }}>×</button>
+          </div>
+        )}
+
         <BoardView store={store} theme={theme} measurer={measurer} host={host} minimapOpen={minimapOpen}
                    onToggleMinimap={toggleMinimap} onReady={setCanvas} />
         {!store && (
@@ -443,6 +454,7 @@ export function App() {
         <CardEditor key={modal.id} store={store} id={modal.id} isNew={modal.isNew} onClose={closeModal} />
       )}
       {store && modal?.kind === "arrows" && <ArrowEditor store={store} ids={modal.ids} onClose={closeModal} />}
+      {modal?.kind === "menu" && <ContextMenu items={modal.items} x={modal.x} y={modal.y} onClose={closeMenu} />}
       {modal?.kind === "confirm" && (
         <Confirm message={modal.message} okLabel={modal.okLabel} onAnswer={(yes) => {
           modal.resolve(yes);

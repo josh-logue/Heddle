@@ -32,8 +32,10 @@ export interface DrawState {
   dpr: number;
   /** Cards being dragged (drawn on top), if any. */
   lifted?: ReadonlySet<string>;
-  /** A group a drag would drop into, outlined. */
+  /** A card or group a drag would drop onto or into, outlined. */
   dropTarget?: string;
+  /** Where a new card would go (dropping a handle on empty canvas). */
+  ghost?: { rect: Rect; color: string };
 }
 
 export function drawBoard(ctx: CanvasRenderingContext2D, s: DrawState): void {
@@ -58,6 +60,17 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: DrawState): void {
   for (const a of s.store.arrows) if (overlaps(a.path.bounds(), view, 40)) drawArrow(ctx, a, s, lod);
   for (const c of below) if (onScreen(c)) drawCard(ctx, c, s, display, lod);
   for (const c of above) if (onScreen(c)) drawCard(ctx, c, s, display, lod);
+  if (s.ghost) {
+    const { rect: r, color } = s.ghost;
+    const path = roundRect(r.x, r.y, r.w, r.h, CORNER);
+    ctx.fillStyle = withAlpha(color, 40);
+    ctx.fill(path);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 3]);
+    ctx.stroke(path);
+    ctx.setLineDash([]);
+  }
 }
 
 function overlaps(r: Rect, v: Rect, margin: number): boolean {

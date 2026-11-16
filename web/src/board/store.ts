@@ -12,7 +12,7 @@ import { StoryGraph } from "../core/graph.ts";
 import { History, deepEqual } from "../core/history.ts";
 import { V_GAP } from "../core/layout.ts";
 import {
-  CARD_COLORS, KIND_GROUP, boardToJson, makeBoard, makeCard, newId,
+  CARD_COLORS, KIND_GROUP, boardToJson, cloneFragment, makeBoard, makeCard, newId,
   type BoardData, type CardData, type ConnectionData, type Display, type RouteData, type SavedValues,
   type StrandInfo,
 } from "../core/model.ts";
@@ -24,6 +24,8 @@ export const GRID = 25;
 export const PUSH_GAP = V_GAP;
 export const NUDGE_STEP = 10;
 export const NUDGE_FINE = 1;
+/** Pasting or duplicating without a pointer position: this far from the originals. */
+export const PASTE_OFFSET = 30;
 
 export interface BoardState {
   readonly cards: readonly CardData[];
@@ -336,6 +338,17 @@ export class BoardStore {
     return card;
   }
 
+  private freshSize: [number, number] | null = null;
+
+  /** A brand-new card's size (for the outline shown where one would be created). */
+  newCardSize(): [number, number] {
+    if (!this.freshSize) {
+      const b = new Layouter({ cards: [], display: this.state.display }, this.m).all([makeCard()]).values().next().value!;
+      this.freshSize = [b.w, b.h];
+    }
+    return this.freshSize;
+  }
+
   /** An arrow from `source` to a card just added (recorded along with it). */
   connectNew(source: string, target: string): void {
     const conn: ConnectionData = { source, target, label: "", style: "solid", color: "", id: newId() };
@@ -556,6 +569,83 @@ export class BoardStore {
     }
   }
 
+  // ----- copy, cut, paste, duplicate ---------------------------------------------------
+
+  /** The selected cards as a self-contained board: a selected group brings everything
+   *  inside it, arrows come along when both ends do, and the custom colours the cards use
+   *  come too, so they paste correctly into another board. Null with nothing selected. */
+  selectionFragment(): BoardData | null {
+    if (!this.selected.size) return null;
+    const ids = new Set<string>();
+    for (const id of this.selected) for (const x of this.carried(id)) ids.add(x);
+    const cards = this.state.cards.filter((c) => ids.has(c.id));
+    const used = new Set(cards.map((c) => c.color.toLowerCase()));
+    return makeBoard({
+      cards: cards.map((c) => ({ ...c, tags: [...c.tags], characters: [...c.characters], locations: [...c.locations] })),
+      connections: this.state.connections.filter((e) => ids.has(e.source) && ids.has(e.target)).map((e) => ({ ...e })),
+      custom_colors: this.state.custom_colors.filter((c) => used.has(c.toLowerCase())),
+    });
+  }
+
+  /** The innermost visible group frame under a point, if any (not one of `exclude`). */
+  groupAt(x: number, y: number, exclude: ReadonlySet<string> = new Set()): string | null {
+    let best: CardBox | null = null;
+    for (const b of this.boxes.values()) {
+      if (!b.isGroup || !b.visible || exclude.has(b.card.id)) continue;
+      if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) continue;
+      if (!best || b.depth >= best.depth) best = b;
+    }
+    return best ? best.card.id : null;
+  }
+
+  /** Add a copy of `fragment` (fresh ids) and select it: one undo step. With `at` (the
+   *  pointer), the copy's top-left goes there and it joins the group under that point;
+   *  without, it sits beside the originals and stays in their groups. */
+  paste(fragment: BoardData, at: [number, number] | null = null): string[] {
+    if (!fragment.cards.length) return [];
+    let copy: BoardData;
+    let target: string | null = null;
+    if (at === null) {
+      copy = cloneFragment(fragment, new Set(this.state.cards.map((c) => c.id)));
+      for (const c of copy.cards) {
+        c.x += PASTE_OFFSET;
+        c.y += PASTE_OFFSET;
+      }
+    } else {
+      copy = cloneFragment(fragment);
+      const left = Math.min(...fragment.cards.map((c) => c.x));
+      const top = Math.min(...fragment.cards.map((c) => c.y));
+      for (const c of copy.cards) {
+        c.x += at[0] - left;
+        c.y += at[1] - top;
+      }
+      target = this.groupAt(at[0], at[1]);
+    }
+    const ids = new Set(copy.cards.map((c) => c.id));
+    const cards = copy.cards.map((c) => (target !== null && !c.parent ? { ...c, parent: target } : c));
+    const colors = [...this.state.custom_colors];
+    for (const c of copy.custom_colors) if (!colors.includes(c)) colors.push(c);
+    this.selected = new Set(cards.filter((c) => !ids.has(c.parent)).map((c) => c.id));
+    this.selectedArrows.clear();
+    this.commit({
+      ...this.state, cards: [...this.state.cards, ...cards],
+      connections: [...this.state.connections, ...copy.connections], custom_colors: colors,
+    });
+    return cards.map((c) => c.id);
+  }
+
+  duplicate(): string[] {
+    const fragment = this.selectionFragment();
+    return fragment ? this.paste(fragment) : [];
+  }
+
+  /** Remove the selected cards (with whatever their groups hold), returning them. */
+  cut(): BoardData | null {
+    const fragment = this.selectionFragment();
+    if (fragment) this.remove(this.selected, [], true);
+    return fragment;
+  }
+
   // ----- arrows ----------------------------------------------------------------------
 
   /** Connect two cards (none if they're the same, or already connected that way). */
@@ -571,7 +661,8 @@ export class BoardStore {
 
   updateArrows(ids: Iterable<string>, data: Partial<Pick<ConnectionData, "label" | "style" | "color">>): void {
     const set = new Set(ids);
-    this.commit({ ...this.state, connections: this.state.connections.map((e) => (set.has(e.id) ? { ...e, ...data } : e)) });
+    const changes = (e: ConnectionData) => (Object.keys(data) as (keyof typeof data)[]).some((k) => e[k] !== data[k]);
+    this.commit({ ...this.state, connections: this.state.connections.map((e) => (set.has(e.id) && changes(e) ? { ...e, ...data } : e)) });
   }
 
   /** Reverse arrows; one already going the other way is left alone (it would repeat it). */

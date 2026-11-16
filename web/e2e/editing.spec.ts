@@ -216,3 +216,88 @@ test("asks before replacing a board with unsaved changes", async ({ page }) => {
   await ask.getByRole("button", { name: "Cancel" }).click();
   expect((await board(page)).cards.length).toBe(1);
 });
+
+test("copies and pastes with the keyboard, and duplicates with Ctrl+D", async ({ page }) => {
+  await newBoard(page);
+  await addCard(page, "Rowan", 300, 250);
+  const a = await onCard(page, "Rowan");
+  await page.mouse.click(a.x, a.y);
+  await page.keyboard.press("Control+c");
+  await expect(page.getByRole("status")).toContainText("Copied 1 card");
+  await page.mouse.move(700, 450);
+  await page.keyboard.press("Control+v");
+  let cards = (await board(page)).cards;
+  expect(cards.map((c) => c.title)).toEqual(["Rowan", "Rowan"]);
+  expect(cards[1]!.id).not.toBe(cards[0]!.id);
+  await page.keyboard.press("Control+d");
+  cards = (await board(page)).cards;
+  expect(cards.length).toBe(3);
+  expect([cards[2]!.x - cards[1]!.x, cards[2]!.y - cards[1]!.y]).toEqual([30, 30]);
+  await page.keyboard.press("Control+x");
+  expect((await board(page)).cards.length).toBe(2);
+});
+
+test("right-click menus: delete a card, change an arrow's style", async ({ page }) => {
+  await newBoard(page);
+  await addCard(page, "A", 300, 250);
+  await addCard(page, "B", 800, 250);
+  const port = await onCard(page, "A", "port");
+  const b = await onCard(page, "B");
+  await page.mouse.move(port.x, port.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y + 20, { steps: 8 });
+  await page.mouse.up();
+
+  await page.mouse.click((port.x + b.x - 115) / 2, port.y, { button: "right" });
+  const menu = page.getByRole("menu").first();
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Line style" }).hover();
+  await page.getByRole("menuitemcheckbox", { name: "Dotted" }).click();
+  await expect(menu).toBeHidden();
+  expect(await page.evaluate(() => (window as unknown as { heddleCanvas: { store: { state: { connections: { style: string }[] } } } })
+    .heddleCanvas.store.state.connections[0]!.style)).toBe("dotted");
+
+  await page.mouse.click(b.x, b.y, { button: "right" });
+  await expect(page.getByRole("menuitem", { name: /Edit card/ })).toBeVisible();
+  await shot(page, "card-menu");
+  await page.getByRole("menuitem", { name: /Delete card/ }).click();
+  expect((await board(page)).cards.map((c) => c.title)).toEqual(["A"]);
+  expect((await board(page)).arrows).toEqual([]);
+  await page.keyboard.press("Escape");
+});
+
+test("Connect to… (L) connects to the next card clicked; Esc cancels", async ({ page }) => {
+  await newBoard(page);
+  await addCard(page, "A", 300, 250);
+  await addCard(page, "B", 800, 450);
+  const a = await onCard(page, "A");
+  const b = await onCard(page, "B");
+  await page.mouse.click(a.x, a.y);
+  await page.keyboard.press("l");
+  await page.keyboard.press("Escape");
+  await page.mouse.click(b.x, b.y);
+  expect((await board(page)).arrows).toEqual([]);
+  await page.mouse.click(a.x, a.y);
+  await page.keyboard.press("l");
+  await page.mouse.move(b.x, b.y, { steps: 4 });
+  await shot(page, "connect-to");
+  await page.mouse.click(b.x, b.y);
+  const { arrows, cards } = await board(page);
+  expect(arrows).toEqual([{ source: cards[0]!.id, target: cards[1]!.id, label: "" }]);
+});
+
+test("Ctrl+dropping a handle on empty canvas makes a card without the editor", async ({ page }) => {
+  await newBoard(page);
+  await addCard(page, "A", 300, 250);
+  const port = await onCard(page, "A", "port");
+  await page.mouse.move(port.x, port.y);
+  await page.mouse.down();
+  await page.mouse.move(port.x + 300, port.y + 100, { steps: 8 });
+  await shot(page, "connect-ghost");
+  await page.keyboard.down("Control");
+  await page.mouse.up();
+  await page.keyboard.up("Control");
+  await expect(page.getByRole("dialog")).toBeHidden();
+  expect((await board(page)).cards.length).toBe(2);
+  expect((await board(page)).arrows.length).toBe(1);
+});

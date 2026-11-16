@@ -35,6 +35,7 @@ export function BoardView({ store, theme, measurer, host, minimapOpen, onToggleM
       confirm: (message) => hostRef.current.confirm(message),
       notice: (text) => hostRef.current.notice(text),
       snapToGrid: () => hostRef.current.snapToGrid(),
+      contextMenu: (items, x, y) => hostRef.current.contextMenu(items, x, y),
     };
     const board = new BoardCanvas(canvasRef.current!, measurer, tooltipRef.current!, proxy);
     boardRef.current = board;

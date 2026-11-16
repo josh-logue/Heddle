@@ -183,3 +183,72 @@ describe("folding, details and making room", () => {
     expect(s.card("below")!.y).toBe(g.y + g.h + 30); // a real move, as on the desktop
   });
 });
+
+describe("copy, cut, paste and duplicate", () => {
+  const board = () => store({
+    cards: [{ id: "g", kind: "group" }, { id: "p", parent: "g", x: 40, y: 80, color: "#123abc" },
+      { id: "q", parent: "g", x: 400, y: 80 }, { id: "far", x: 2000, y: 2000 }],
+    connections: [{ id: "e", source: "p", target: "q", label: "on" }, { id: "f", source: "q", target: "far" }],
+    custom_colors: ["#123abc", "#999999"],
+  });
+
+  it("copies a group with everything in it, its own arrows and the colours it uses", () => {
+    const s = board();
+    s.select(["g"]);
+    const f = s.selectionFragment()!;
+    expect(f.cards.map((c) => c.id).sort()).toEqual(["g", "p", "q"]);
+    expect(f.connections.map((c) => c.id)).toEqual(["e"]);
+    expect(f.custom_colors).toEqual(["#123abc"]);
+    s.clearSelection();
+    expect(s.selectionFragment()).toBeNull();
+  });
+
+  it("duplicates beside the originals, in the same group, as one step", () => {
+    const s = board();
+    s.select(["p"]);
+    const [id] = s.duplicate();
+    const copy = s.card(id!)!;
+    expect([copy.x, copy.y, copy.parent]).toEqual([70, 110, "g"]);
+    expect([...s.selected]).toEqual([id]);
+    s.undo();
+    expect(s.card(id!)).toBeUndefined();
+  });
+
+  it("pastes at a point, joining the group there, with fresh ids and arrows", () => {
+    const s = board();
+    s.select(["p", "q"]);
+    const f = s.selectionFragment()!;
+    const g = s.boxes.get("g")!;
+    const ids = s.paste(f, [g.x + 30, g.y + g.headerH + 10]);
+    const cards = ids.map((i) => s.card(i)!);
+    expect(cards.every((c) => c.parent === "g" && !["p", "q"].includes(c.id))).toBe(true);
+    expect(Math.min(...cards.map((c) => c.x))).toBe(g.x + 30);
+    const arrows = s.state.connections.filter((e) => ids.includes(e.source));
+    expect(arrows.map((e) => e.label)).toEqual(["on"]);
+  });
+
+  it("pastes into another board, bringing custom colours", () => {
+    const s = board();
+    s.select(["p"]);
+    const f = s.selectionFragment()!;
+    const other = store({ cards: [] });
+    const [id] = other.paste(f, [0, 0]);
+    expect(other.card(id!)!.parent).toBe("");
+    expect(other.state.custom_colors).toEqual(["#123abc"]);
+  });
+
+  it("cuts a group with its cards", () => {
+    const s = board();
+    s.select(["g"]);
+    const f = s.cut()!;
+    expect(f.cards.length).toBe(3);
+    expect(s.state.cards.map((c) => c.id)).toEqual(["far"]);
+    expect(s.state.connections).toEqual([]);
+  });
+
+  it("an arrow edit that changes nothing isn't an undo step", () => {
+    const s = board();
+    s.updateArrows(["e"], { label: "on" });
+    expect(s.history.canUndo()).toBe(false);
+  });
+});
