@@ -14,6 +14,8 @@ dist/
 
 # Web version (web/): npm packages; its build output is covered by dist/ above
 node_modules/
+web/test-results/
+web/playwright-report/
 
 # Editors, Claude Code and Windows/OneDrive clutter
 .claude/

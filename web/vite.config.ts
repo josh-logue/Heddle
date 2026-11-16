@@ -7,6 +7,8 @@ import { defineConfig } from "vite";
 export default defineConfig(({ command }) => ({
   base: command === "build" ? "/Heddle/" : "/",
   plugins: [react()],
+  // The demo boards are read from ../examples, outside this folder.
+  server: { fs: { allow: [".."] } },
   build: {
     outDir: "dist",
     sourcemap: true,

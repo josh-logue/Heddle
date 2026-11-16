@@ -9,6 +9,12 @@ through the story, where characters are introduced, and loose ends.
 
 *Act II of `examples/lantern-tide.json`, one of the demo boards.*
 
+**Try it in your browser:** open the [Lantern Tide](https://josh-logue.github.io/Heddle/?demo=lantern-tide)
+or [Hollybank Garden](https://josh-logue.github.io/Heddle/?demo=hollybank-garden) demo board, or
+[open one of your own](https://josh-logue.github.io/Heddle/). The browser version is being built
+(see [Web version](#web-version)): for now it shows boards (pan, zoom, fold groups, show
+details) but can't edit them. Boards stay on your computer; nothing is uploaded.
+
 ## Setup
 
 You'll need:
@@ -61,6 +67,25 @@ preferences, backups or boards.
 **Unexpected errors** are written to `%LOCALAPPDATA%\Heddle\logs\error.log` (kept under
 about 1 MB; the previous log is kept as `error.log.old`) and reported in a dialog; the app keeps
 running. Set `HEDDLE_LOG_DIR` to use another folder.
+
+## Web version
+
+`web/` holds the browser version: TypeScript, React and a Canvas 2D board, built with Vite
+and published to GitHub Pages by `.github/workflows/web.yml`. It opens the same `.json`
+boards. Its core (`web/src/core`) is a port of the Python one, kept in step by shared
+fixtures: `web/fixtures/build_fixtures.py` records what the Python core answers for a set of
+boards, the TypeScript tests must give the same answers, and `tests/test_web_fixtures.py`
+fails when the fixtures are out of date. It needs [Node.js](https://nodejs.org/) 20 or later:
+
+```powershell
+cd web
+npm ci
+npm run dev                       # http://localhost:5173
+npm run check                     # lint, type check, unit tests, build
+npx playwright install chromium   # once, for the browser tests
+npx playwright test               # browser tests (start their own dev server)
+python fixtures/build_fixtures.py # after changing the Python core
+```
 
 ## Controls
 

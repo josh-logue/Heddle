@@ -59,6 +59,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Browser tests
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web/dist
