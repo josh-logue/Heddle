@@ -29,12 +29,12 @@ def test_legacy_names_are_newest_first():
 def test_warpingweft_preferences_carry_over(stores):
     old = stores("WarpingWeft")
     old.setValue("dark_mode", True)
-    old.setValue("recent_files", ["C:/boards/Tracks.json"])
+    old.setValue("recent_files", ["C:/boards/story.json"])
     old.sync()
     current = stores("Heddle")
     app_settings._adopt_legacy(current)
     assert current.value("dark_mode", type=bool) is True
-    assert current.value("recent_files") == ["C:/boards/Tracks.json"]  # Open Recent kept
+    assert current.value("recent_files") == ["C:/boards/story.json"]  # Open Recent kept
     assert stores("WarpingWeft").value("dark_mode", type=bool) is True  # old entry left alone
 
 

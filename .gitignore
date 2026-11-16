@@ -3,6 +3,26 @@ __pycache__/
 *.pyc
 *.json.tmp
 .pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Packaged builds (PyInstaller / pyside6-deploy)
+build/
+dist/
+*.spec
+
+# Editors, Claude Code and Windows/OneDrive clutter
+.claude/
+.vscode/
+.idea/
+desktop.ini
+Thumbs.db
+
+# Boards and screenshots dropped in the repo root for testing (demos live in examples/,
+# README images in docs/images/)
+/*.json
+/*.png
 
 # Local notes for Claude (not committed)
 CLAUDE.md
