@@ -75,6 +75,15 @@ def _free_leftover_widgets() -> None:
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """Empty the clipboard before Python shuts down. On the offscreen platform, Qt
+    crashes during interpreter exit (an access violation) if the clipboard still holds
+    copied cards, turning a passing run into a failed one in CI."""
+    from PySide6.QtWidgets import QApplication
+    if QApplication.instance() is not None:
+        QApplication.clipboard().clear()
+
+
 @pytest.fixture(scope="session")
 def qapp():
     from PySide6.QtWidgets import QApplication
