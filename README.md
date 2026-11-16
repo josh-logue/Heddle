@@ -220,23 +220,12 @@ heddle/
 ```
 
 Boards are saved as readable JSON: `cards` and `connections` arrays, a `display` object of the
-board's options, `routes` (fields given to routes), `strands` (strands' descriptions, linked
-pictures and custom fields), `saved_values` (strands kept with no card using them) and
-`custom_colors`. The current format is version 12. Each version added:
-
-- 12: a group card's `arrange_wrap` (auto-arrange's row limit; 0 for none)
-- 11: the `display` options `show_description` and `compact_cards`
-- 10: a strand's custom `fields`, in order (`{"name", "value"}` objects)
-- 9: a group card's `collapsed`
-- 8: the `display` option `show_no_description`
-- 7: strand cards (a card `kind` of `strand`, with `strand_kind` and `strand`)
-- 6: `strands`, with picture paths relative to the board's folder when the image is inside it
-- 5: more `display` options, and a card's `outside_story`
-- 4: `routes`
-- 3: a card's `pov`, an arrow's `style` and `color`, and `display`
-
-Older boards open with defaults for these. A board saved by a newer version of the app still
-opens, with a warning that saving it here may drop anything the newer version added.
+board's options, `routes` (fields given to routes), `strands` (strands' descriptions, custom
+fields and linked pictures, whose paths are relative to the board's folder when the image is
+inside it), `saved_values` (strands kept with no card using them) and `custom_colors`. The file
+records its format `version`. Boards from older versions open with defaults for anything added
+since. A board saved by a newer version of the app still opens, with a warning that saving it
+here may drop anything the newer version added.
 
 **Autosave** (File → Autosave, on by default): 60 seconds after the first unsaved change the
 board saves itself; further edits don't push that back. An untitled board isn't given a name:
