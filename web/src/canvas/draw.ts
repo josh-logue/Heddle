@@ -9,7 +9,7 @@ import {
 } from "../board/metrics.ts";
 import { DASH_PATTERNS, LOD_OVERVIEW, type ArrowShape } from "../board/routing.ts";
 import { cssFont, elide, lineHeight, type FontKey, type TextMeasurer } from "../board/text.ts";
-import type { BoardViewer } from "../board/viewer.ts";
+import type { BoardStore } from "../board/store.ts";
 import type { Camera } from "./camera.ts";
 import { darker, lighter, readableText, withAlpha, type Theme } from "./theme.ts";
 
@@ -24,17 +24,21 @@ export interface Hover {
 }
 
 export interface DrawState {
-  viewer: BoardViewer;
+  store: BoardStore;
   camera: Camera;
   theme: Theme;
   m: TextMeasurer;
   hover: Hover;
   dpr: number;
+  /** Cards being dragged (drawn on top), if any. */
+  lifted?: ReadonlySet<string>;
+  /** A group a drag would drop into, outlined. */
+  dropTarget?: string;
 }
 
 export function drawBoard(ctx: CanvasRenderingContext2D, s: DrawState): void {
   const { camera, theme, dpr } = s;
-  const display = s.viewer.board.display;
+  const display = s.store.state.display;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = theme.canvasBg;
   ctx.fillRect(0, 0, camera.width, camera.height);
@@ -44,11 +48,16 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: DrawState): void {
   if (display.show_grid) drawGrid(ctx, view, camera.scale, theme);
 
   const lod = camera.scale;
-  const { groups, cards } = paintOrder(s.viewer.boxes);
+  const { groups, cards } = paintOrder(s.store.boxes);
+  // What's being dragged is drawn above everything else until it's dropped.
+  const lifted = s.lifted;
+  const below = lifted ? cards.filter((c) => !lifted.has(c.card.id)) : cards;
+  const above = lifted ? cards.filter((c) => lifted.has(c.card.id)) : [];
   const onScreen = (b: Rect) => overlaps(b, view, 12);
   for (const g of groups) if (onScreen(g)) drawCard(ctx, g, s, display, lod);
-  for (const a of s.viewer.arrows) if (overlaps(a.path.bounds(), view, 40)) drawArrow(ctx, a, s, lod);
-  for (const c of cards) if (onScreen(c)) drawCard(ctx, c, s, display, lod);
+  for (const a of s.store.arrows) if (overlaps(a.path.bounds(), view, 40)) drawArrow(ctx, a, s, lod);
+  for (const c of below) if (onScreen(c)) drawCard(ctx, c, s, display, lod);
+  for (const c of above) if (onScreen(c)) drawCard(ctx, c, s, display, lod);
 }
 
 function overlaps(r: Rect, v: Rect, margin: number): boolean {
@@ -107,7 +116,7 @@ function drawCard(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, displ
   const showText = lod >= LOD_TEXT;
   const color = b.card.color;
   if (lod < LOD_TITLE) {
-    drawOverview(ctx, b, t, lod);
+    drawOverview(ctx, b, t, lod, s.store.selected.has(b.card.id));
     return;
   }
   ctx.save();
@@ -192,16 +201,27 @@ function drawCard(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, displ
     }
   }
 
-  // Outline: dashed for a card left out of the story tools.
+  // Outline: selected, a drop target, a group, or plain; dashed for a card left out of
+  // the story tools.
   let width = 1;
   let stroke = t.cardBorder;
-  if (b.isGroup) {
+  let dashed = false;
+  if (s.store.selected.has(b.card.id)) {
+    stroke = t.selected;
+    width = 2.5;
+  } else if (s.dropTarget === b.card.id) {
+    stroke = t.dark ? lighter(color, 130) : darker(color, 115);
+    width = 2.5;
+    dashed = true;
+  } else if (b.isGroup) {
     stroke = withAlpha(color, 170);
     width = 1.5;
   }
   ctx.strokeStyle = stroke;
   ctx.lineWidth = width;
-  if (b.card.outside_story && display.story_tools) ctx.setLineDash([4 * width, 2 * width]);
+  if (dashed || (b.card.outside_story && display.story_tools && !s.store.selected.has(b.card.id))) {
+    ctx.setLineDash([4 * width, 2 * width]);
+  }
   ctx.stroke(path);
   ctx.setLineDash([]);
 
@@ -227,7 +247,7 @@ function line(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number,
 }
 
 /** Far zoomed out: plain blocks (body plus coloured header), no text. */
-function drawOverview(ctx: CanvasRenderingContext2D, b: CardBox, t: Theme, lod: number): void {
+function drawOverview(ctx: CanvasRenderingContext2D, b: CardBox, t: Theme, lod: number, selected: boolean): void {
   const color = b.card.color;
   if (b.isGroup) {
     ctx.fillStyle = t.canvasBg;
@@ -240,8 +260,8 @@ function drawOverview(ctx: CanvasRenderingContext2D, b: CardBox, t: Theme, lod: 
   }
   ctx.fillStyle = color;
   ctx.fillRect(b.x, b.y, b.w, HEADER_HEIGHT);
-  if (b.isGroup) {
-    ctx.strokeStyle = color;
+  if (b.isGroup || selected) {
+    ctx.strokeStyle = selected ? t.selected : color;
     ctx.lineWidth = 1 / lod;
     ctx.strokeRect(b.x, b.y, b.w, b.h);
   }
@@ -339,7 +359,8 @@ function tracePath(ctx: CanvasRenderingContext2D, a: ArrowShape): void {
 
 function drawArrow(ctx: CanvasRenderingContext2D, a: ArrowShape, s: DrawState, lod: number): void {
   const t = s.theme;
-  const color = arrowColor(a, t, s.hover.arrow === a.conn.id);
+  const selected = s.store.selectedArrows.has(a.conn.id);
+  const color = selected ? t.selected : arrowColor(a, t, s.hover.arrow === a.conn.id);
   if (lod < LOD_OVERVIEW) { // far zoomed out: a plain 1px line
     tracePath(ctx, a);
     ctx.strokeStyle = color;
@@ -347,7 +368,7 @@ function drawArrow(ctx: CanvasRenderingContext2D, a: ArrowShape, s: DrawState, l
     ctx.stroke();
     return;
   }
-  const width = 2.2;
+  const width = selected ? 3 : 2.2;
   tracePath(ctx, a);
   ctx.strokeStyle = color;
   ctx.lineWidth = width;

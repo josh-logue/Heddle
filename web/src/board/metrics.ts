@@ -79,6 +79,10 @@ export interface CardBox extends Rect {
   depth: number;
   /** False when folded away inside a collapsed group. */
   visible: boolean;
+  /** Groups: where the group's saved x and y belong after fitting round its cards (the
+   *  frame as it looks with details hidden), less any make-room push. */
+  anchorX: number;
+  anchorY: number;
 }
 
 export interface LayoutInput {
@@ -168,8 +172,10 @@ export class Structure {
 /** Lays out cards and fits groups: all of them, or one card and the groups around it. */
 export class Layouter {
   private readonly ctx: Ctx;
+  /** Plain cards laid out before, by card object (cards are replaced, never changed). */
+  private readonly cache = new WeakMap<CardData, { details: boolean; sx: number; sy: number; box: CardBox }>();
 
-  constructor(input: LayoutInput, m: TextMeasurer, readonly structure = new Structure(input.cards)) {
+  constructor(input: LayoutInput, m: TextMeasurer, public structure = new Structure(input.cards)) {
     this.ctx = {
       m, display: input.display ?? DISPLAY_DEFAULTS,
       strands: new Map((input.strands ?? []).map((s) => [strandKey(s.kind, s.name), s])),
@@ -185,7 +191,7 @@ export class Layouter {
     const order = cards.map((c, i) => ({ c, i }));
     const groups = order.filter(({ c }) => c.kind === KIND_GROUP)
       .sort((a, b) => structure.depth.get(b.c.id)! - structure.depth.get(a.c.id)! || a.i - b.i);
-    for (const { c } of order) if (c.kind !== KIND_GROUP) boxes.set(c.id, layoutCard(c, this.ctx, structure, boxes));
+    for (const { c } of order) if (c.kind !== KIND_GROUP) boxes.set(c.id, this.plain(c, boxes));
     for (const { c } of groups) boxes.set(c.id, layoutCard(c, this.ctx, structure, boxes));
     const out = new Map<string, CardBox>();
     for (const c of cards) {
@@ -194,6 +200,20 @@ export class Layouter {
       out.set(c.id, box);
     }
     return out;
+  }
+
+  /** A plain or strand card: from the cache when nothing it depends on has changed. */
+  private plain(c: CardData, boxes: Map<string, CardBox>): CardBox {
+    const details = this.ctx.details.has(c.id);
+    const [sx, sy] = this.ctx.shift.get(c.id) ?? [0, 0];
+    const hit = this.cache.get(c);
+    if (hit && hit.details === details && hit.sx === sx && hit.sy === sy && !hit.box.introduces.length
+        && !(this.ctx.introductions.get(c.id)?.length)) {
+      return { ...hit.box, x: c.x + sx, y: c.y + sy };
+    }
+    const box = layoutCard(c, this.ctx, this.structure, boxes);
+    this.cache.set(c, { details, sx, sy, box: { ...box } });
+    return box;
   }
 
   /** Lay out one card again (its text or details changed), then refit the groups around
@@ -286,6 +306,7 @@ function layoutCard(c: CardData, ctx: Ctx, structure: Structure, done: Map<strin
     card: c, isGroup: group, isStrand: c.kind === KIND_STRAND, x: left, y: cy, w: width, h: 0, closedH: 0,
     headerH: HEADER_HEIGHT, blocks: [], tagPills: [], charPills: [], detailsTop: null, detailsVisible,
     memberCount: members.length, introduces, tooltip: "", depth: structure.depth.get(c.id) ?? 0, visible: true,
+    anchorX: c.x, anchorY: c.y,
   };
   if (box.isStrand) {
     layoutStrand(box, ctx, inner);
@@ -388,6 +409,10 @@ function layoutCard(c: CardData, ctx: Ctx, structure: Structure, done: Map<strin
     }
     const top = bodyTop - hdr; // extra header (shown details) grows upward
     box.y = top;
+    if (!manual && bbox) {
+      box.anchorX = left - dx; // the anchor follows the cards' top-left corners
+      box.anchorY = bodyTop - hdr0 - dy;
+    }
     box.h = c.collapsed ? hdr : bottom - top;
     box.closedH = box.h;
   } else {

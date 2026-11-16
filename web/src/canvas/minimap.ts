@@ -44,7 +44,7 @@ export class Minimap {
   }
 
   private cardsExtent(): Rect | null {
-    const v = this.board.viewer;
+    const v = this.board.store;
     const b = v ? boardExtent(v.boxes) : null;
     if (!b) return null;
     const pad = Math.max(MIN_PAD, PAD_FRACTION * Math.max(b.w, b.h));
@@ -99,7 +99,7 @@ export class Minimap {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cw, ch);
     const t = this.board.theme;
-    const viewer = this.board.viewer;
+    const viewer = this.board.store;
     if (!viewer) return;
     const xf = this.transform(this.extent());
     ctx.save();

@@ -47,9 +47,9 @@ test("zooms with Ctrl+wheel and the buttons, and pans by dragging", async ({ pag
   await shot(page, "lantern-100");
   const before = await canvas.screenshot();
   await page.mouse.move(600, 400);
-  await page.mouse.down();
+  await page.mouse.down({ button: "middle" }); // (a left drag would move a card)
   await page.mouse.move(450, 300, { steps: 5 });
-  await page.mouse.up();
+  await page.mouse.up({ button: "middle" });
   expect(Buffer.compare(before, await canvas.screenshot())).not.toBe(0);
   await page.keyboard.press("Control+0");
   expect(await zoomText(page)).toBe("100%");
@@ -58,17 +58,25 @@ test("zooms with Ctrl+wheel and the buttons, and pans by dragging", async ({ pag
 test("folds every group and shows every card's details", async ({ page }) => {
   await page.goto("/?demo=lantern-tide");
   await expect(page.locator(".board-name")).toHaveText("Lantern Tide");
-  await page.getByRole("button", { name: "Collapse groups" }).click();
-  await expect(page.getByRole("button", { name: "Expand groups" })).toBeVisible();
+  const view = page.getByText("View", { exact: true });
+  await view.click();
+  await page.getByRole("button", { name: /Collapse every group/ }).click();
+  await expect(page.getByRole("button", { name: /Expand every group/ })).toBeVisible();
+  await page.mouse.click(600, 500); // the menu closes
+  await expect(page.getByRole("button", { name: /Expand every group/ })).toBeHidden();
   await shot(page, "lantern-collapsed");
   await page.keyboard.press("Shift+C");
-  await expect(page.getByRole("button", { name: "Collapse groups" })).toBeVisible();
-  await page.getByRole("button", { name: "Show details" }).click();
-  await expect(page.getByRole("button", { name: "Hide details" })).toBeVisible();
+  await view.click();
+  await expect(page.getByRole("button", { name: /Collapse every group/ })).toBeVisible();
+  await page.getByRole("button", { name: /Show every card's details/ }).click();
+  await expect(page.getByRole("button", { name: /Hide every card's details/ })).toBeVisible();
+  await view.click();
   await shot(page, "lantern-details");
 });
 
 test("opens a board file, and says when a file isn't a board", async ({ page }) => {
+  // Without the File System Access API (as in Firefox and Safari): a plain file input.
+  await page.addInitScript(() => delete (window as { showOpenFilePicker?: unknown }).showOpenFilePicker);
   await page.goto("/");
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Open a board…" }).click();
@@ -93,12 +101,12 @@ test("dark theme", async ({ page }) => {
 async function onCard(page: Page, title: string, part: "toggle" | "fold") {
   return page.evaluate(([t, which]) => {
     type Canvas = {
-      viewer: { boxes: Map<string, { card: { title: string }; x: number; y: number; w: number }> };
+      store: { boxes: Map<string, { card: { title: string }; x: number; y: number; w: number }> };
       camera: { toScreen(x: number, y: number): [number, number] };
       canvas: HTMLCanvasElement;
     };
     const c = (window as unknown as { heddleCanvas: Canvas }).heddleCanvas;
-    const box = [...c.viewer.boxes.values()].find((b) => b.card.title === t)!;
+    const box = [...c.store.boxes.values()].find((b) => b.card.title === t)!;
     const [lx, ly] = which === "toggle" ? [box.w - 10 - 18 + 4 + 9, 16] : [6 + 8, 16];
     const [sx, sy] = c.camera.toScreen(box.x + lx, box.y + ly);
     const r = c.canvas.getBoundingClientRect();
@@ -111,8 +119,8 @@ test("clicking a card's ▸ shows its details, and a group's − folds it", asyn
   await expect(page.locator(".board-name")).toHaveText("Lantern Tide");
   await page.getByRole("button", { name: /%$/ }).click();
   const height = () => page.evaluate(() => {
-    const c = (window as unknown as { heddleCanvas: { viewer: { boxes: Map<string, { card: { title: string }; h: number }> } } }).heddleCanvas;
-    return [...c.viewer.boxes.values()].find((b) => b.card.title === "The Warden Hall")!.h;
+    const c = (window as unknown as { heddleCanvas: { store: { boxes: Map<string, { card: { title: string }; h: number }> } } }).heddleCanvas;
+    return [...c.store.boxes.values()].find((b) => b.card.title === "The Warden Hall")!.h;
   });
   const closed = await height();
   const toggle = await onCard(page, "The Warden Hall", "toggle");
@@ -126,5 +134,6 @@ test("clicking a card's ▸ shows its details, and a group's − folds it", asyn
 
   const fold = await onCard(page, "The Warden's Road", "fold");
   await page.mouse.click(fold.x, fold.y);
-  await expect(page.getByRole("button", { name: "Expand groups" })).toBeVisible();
+  await page.getByText("View", { exact: true }).click();
+  await expect(page.getByRole("button", { name: /Expand every group/ })).toBeVisible();
 });

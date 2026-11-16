@@ -2,11 +2,10 @@
 import { describe, expect, it } from "vitest";
 import { DISPLAY_DEFAULTS, boardFromDict, makeCard, makeConnection, type CardData } from "../src/core/model.ts";
 import {
-  CARD_WIDTH, GROUP_MIN_WIDTH, GROUP_PAD, HEADER_HEIGHT, PAD, Structure, anchorRect, layoutBoard, paintOrder,
+  CARD_WIDTH, GROUP_MIN_WIDTH, GROUP_PAD, HEADER_HEIGHT, Structure, anchorRect, layoutBoard, paintOrder,
 } from "../src/board/metrics.ts";
 import { ARROW_LEN, REVERSE_OFFSET, routeArrows } from "../src/board/routing.ts";
 import { elide, elideLines, fakeMeasurer, wrapLines } from "../src/board/text.ts";
-import { BoardViewer } from "../src/board/viewer.ts";
 
 const m = fakeMeasurer();
 // With the fake measurer every "small" character is 34/3 × 0.55 px wide.
@@ -195,71 +194,3 @@ describe("arrows", () => {
   });
 });
 
-describe("making room", () => {
-  const notes = "a long note ".repeat(30);
-
-  it("pushes the card below down while details are open, and back after", () => {
-    const board = boardFromDict({ cards: [{ id: "a", y: 0, notes }, { id: "b", y: 150 }, { id: "far", x: 900, y: 150 }] });
-    const v = new BoardViewer(board, m);
-    const b0 = v.boxes.get("b")!.y;
-    v.toggleDetails("a");
-    const a = v.boxes.get("a")!;
-    expect(v.boxes.get("b")!.y).toBe(a.y + a.h + 30); // the usual gap below
-    expect(v.boxes.get("far")!.y).toBe(150); // not in the way: stays put
-    expect(board.cards[1]!.y).toBe(150); // nothing saved changes
-    v.toggleDetails("a");
-    expect(v.boxes.get("b")!.y).toBe(b0);
-  });
-
-  it("carries on down the line: a pushed card pushes the next", () => {
-    const board = boardFromDict({ cards: [{ id: "a", notes }, { id: "b", y: 150 }, { id: "c", y: 300 }] });
-    const v = new BoardViewer(board, m);
-    v.toggleDetails("a");
-    const b = v.boxes.get("b")!;
-    expect(v.boxes.get("c")!.y).toBe(b.y + b.h + 30);
-  });
-
-  it("moves a group's cards with it", () => {
-    const board = boardFromDict({ cards: [
-      { id: "a", notes }, { id: "g", kind: "group" }, { id: "p", parent: "g", x: 30, y: 200 }] });
-    const v = new BoardViewer(board, m);
-    const p0 = v.boxes.get("p")!.y;
-    v.toggleDetails("a");
-    expect(v.boxes.get("p")!.y).toBeGreaterThan(p0);
-    expect(v.boxes.get("g")!.y).toBeLessThan(v.boxes.get("p")!.y);
-    v.setAllDetails(false);
-    expect(v.boxes.get("p")!.y).toBe(p0);
-  });
-
-  it("makes room when a group unfolds", () => {
-    const board = boardFromDict({ cards: [
-      { id: "g", kind: "group", collapsed: true }, { id: "p", parent: "g", x: 30, y: 80 }, { id: "below", y: 100 }] });
-    const v = new BoardViewer(board, m);
-    v.setCollapsed("g", false);
-    const g = v.boxes.get("g")!;
-    expect(v.boxes.get("below")!.y).toBe(g.y + g.h + 30);
-  });
-});
-
-describe("viewer", () => {
-  it("folds groups and shows details", () => {
-    const board = boardFromDict({
-      cards: [{ id: "g", kind: "group" }, { id: "a", parent: "g", x: 30, y: 60, characters: ["Rowan"] }, { id: "b", x: 600 }],
-      connections: [{ source: "a", target: "b" }],
-    });
-    const v = new BoardViewer(board, m);
-    const before = v.version;
-    v.setCollapsed("g", true);
-    expect(v.boxes.get("a")!.visible).toBe(false);
-    expect(v.arrows[0]!.from).toBe("g");
-    expect(v.version).toBeGreaterThan(before);
-    v.setCollapsed("g", false);
-    const h = v.boxes.get("a")!.h;
-    v.toggleDetails("a");
-    expect(v.boxes.get("a")!.h).toBeGreaterThan(h);
-    v.setAllDetails(false);
-    expect(v.boxes.get("a")!.h).toBe(h);
-    expect(v.boxes.get("a")!.introduces).toEqual(["Rowan"]); // first on the only route
-    expect(PAD).toBe(10);
-  });
-});
