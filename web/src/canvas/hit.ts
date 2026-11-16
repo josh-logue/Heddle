@@ -2,7 +2,9 @@
 // the last drawn first), which part of it, or an arrow.
 
 import type { Display } from "../core/model.ts";
-import { PORT_RADIUS, foldRect, hasPort, paintOrder, portCenter, toggleRect, type CardBox, type Rect } from "../board/metrics.ts";
+import {
+  PORT_RADIUS, RESIZE_GRIP, foldRect, hasPort, paintOrder, portCenter, toggleRect, type CardBox, type Rect,
+} from "../board/metrics.ts";
 import { hitArrow, type ArrowShape } from "../board/routing.ts";
 import type { Hover } from "./draw.ts";
 
@@ -18,6 +20,7 @@ function partOf(b: CardBox, x: number, y: number, display: Display): Hover["part
   }
   if (b.isGroup && inRect(foldRect(), lx, ly, 2)) return "fold";
   if (inRect(toggleRect(b), lx, ly, 3)) return "toggle";
+  if (b.isGroup && !b.card.collapsed && lx >= b.w - RESIZE_GRIP && ly >= b.h - RESIZE_GRIP) return "resize";
   return "body";
 }
 

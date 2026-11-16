@@ -252,3 +252,132 @@ describe("copy, cut, paste and duplicate", () => {
     expect(s.history.canUndo()).toBe(false);
   });
 });
+
+describe("groups", () => {
+  const board = () => store({
+    cards: [{ id: "g", kind: "group" }, { id: "p", parent: "g", x: 40, y: 80 }, { id: "q", parent: "g", x: 400, y: 80 },
+      { id: "loose", x: 900, y: 80 }, { id: "h", kind: "group", x: 900, y: 600 }],
+    connections: [{ id: "e", source: "p", target: "q" }],
+  });
+  const inside = (s: BoardStore, g: string): [number, number] => {
+    const b = s.boxes.get(g)!;
+    return [b.x + 40, b.y + b.headerH + 40];
+  };
+
+  it("drops cards into the group under the pointer, and out of one onto the canvas", () => {
+    const s = board();
+    expect(s.dropHint(["loose"], ...inside(s, "g"))).toBe("g");
+    s.dropInto(["loose"], ...inside(s, "g"));
+    s.commit();
+    expect(s.card("loose")!.parent).toBe("g");
+    expect(s.dropHint(["p"], ...inside(s, "g"))).toBeNull(); // already there: nothing to announce
+    s.dropInto(["p"], 5000, 5000);
+    s.commit();
+    expect(s.card("p")!.parent).toBe("");
+    s.undo();
+    expect(s.card("p")!.parent).toBe("g");
+  });
+
+  it("never drops a group into itself or what's inside it", () => {
+    const s = board();
+    s.dropInto(["h"], ...inside(s, "g"));
+    s.commit();
+    expect(s.card("h")!.parent).toBe("g");
+    expect(s.groupForDrop(["g"], ...inside(s, "h"))).toBeNull();
+  });
+
+  it("parks a card dropped on a collapsed group under its other cards", () => {
+    const s = board();
+    s.setCollapsed(["g"], true);
+    const g = s.boxes.get("g")!;
+    s.dropInto(["loose"], g.x + 100, g.y + 10);
+    s.commit();
+    expect(s.card("loose")!.parent).toBe("g");
+    expect(s.boxes.get("loose")!.visible).toBe(false);
+    expect(s.card("loose")!.x).toBe(40);
+  });
+
+  it("removes a card from its group, stepping it outside the frame", () => {
+    const s = board();
+    const g = s.boxes.get("g")!;
+    s.removeFromGroup("q");
+    expect(s.card("q")!.parent).toBe("");
+    expect(s.card("q")!.x).toBe(g.x + g.w + 30);
+  });
+
+  it("ungroups, leaving the cards where they are", () => {
+    const s = board();
+    s.ungroup("g");
+    expect(s.state.cards.filter((c) => c.parent === "g")).toEqual([]);
+    expect([s.card("p")!.x, s.card("q")!.x]).toEqual([40, 400]);
+  });
+
+  it("lets a group's cards go when it becomes a card", () => {
+    const s = board();
+    s.updateCard("g", { kind: "card" });
+    expect(s.card("p")!.parent).toBe("");
+  });
+
+  it("sets a group's members from the editor: new ones in a grid, removed ones beside it", () => {
+    const s = board();
+    const frame = s.boxes.get("g")!;
+    s.updateCard("g", { title: "Act One" }, { members: ["p", "loose"] });
+    expect(s.card("loose")!.parent).toBe("g");
+    expect(s.card("q")!.parent).toBe("");
+    expect(s.card("q")!.x).toBe(frame.x + frame.w + 60);
+    s.undo(); // title and members: one step
+    expect(s.card("g")!.title).toBe("New card");
+    expect(s.card("q")!.parent).toBe("g");
+    expect(s.memberCandidates("g").map(([id, , m]) => [id, m])).toContainEqual(["p", true]);
+    expect(s.memberCandidates("h").map(([id]) => id)).not.toContain("h");
+  });
+
+  it("auto-arranges a group by its arrows and fits it snugly", () => {
+    const s = store({
+      cards: [{ id: "g", kind: "group", width: 2000, height: 2000 }, { id: "a", parent: "g", x: 600, y: 300 },
+        { id: "b", parent: "g", x: 40, y: 80 }, { id: "c", parent: "g", x: 40, y: 400 }],
+      connections: [{ source: "a", target: "b" }, { source: "b", target: "c" }],
+    });
+    s.autoArrange(["g"]);
+    const [a, b, c] = ["a", "b", "c"].map((i) => s.boxes.get(i)!);
+    expect(a!.y).toBe(b!.y);
+    expect(b!.x).toBeGreaterThan(a!.x);
+    expect(c!.x).toBeGreaterThan(b!.x);
+    const g = s.card("g")!;
+    expect([g.width, g.height]).toEqual([0, 0]);
+    expect(s.history.canUndo()).toBe(true);
+  });
+
+  it("resizes a group by hand, never smaller than its cards, and fits it again", () => {
+    const s = board();
+    const before = s.boxes.get("g")!;
+    s.commit(s.resizedGroup("g", before.w + 300, before.h + 200));
+    expect(s.boxes.get("g")!.w).toBe(before.w + 300);
+    expect(s.boxes.get("g")!.h).toBeCloseTo(before.h + 200);
+    s.commit(s.resizedGroup("g", 10, 10));
+    expect(s.boxes.get("g")!.w).toBe(before.w); // still holds every card
+    s.fitFrame("g");
+    expect(s.card("g")!.width).toBe(0);
+  });
+
+  it("sets arrange options", () => {
+    const s = board();
+    s.setArrangeOptions(["g", "p"], { arrange_wrap: 3 });
+    expect(s.card("g")!.arrange_wrap).toBe(3);
+    expect(s.card("p")!.arrange_wrap).toBe(0); // not a group
+  });
+});
+
+describe("dragging", () => {
+  it("holds the frames of the groups round a dragged card still until the drop", () => {
+    const s = store({ cards: [{ id: "g", kind: "group" }, { id: "p", parent: "g", x: 40, y: 80 }] });
+    const frame = { ...s.boxes.get("g")! };
+    s.beginMove(["p"]);
+    s.preview(s.movedBy(["p"], 0, 900));
+    expect(s.boxes.get("g")!.h).toBe(frame.h); // not stretched after the card
+    s.dropInto(["p"], 60, s.boxes.get("p")!.y + 10);
+    s.endMove();
+    s.commit();
+    expect(s.card("p")!.parent).toBe("");
+  });
+});

@@ -43,7 +43,8 @@ type Listener = () => void;
 type Gesture =
   | { kind: "click"; x: number; y: number; hit: Hover; moved: boolean }
   | { kind: "pan" }
-  | { kind: "move"; x: number; y: number; card: string; roots: string[]; base: BoardState; moved: boolean }
+  | { kind: "move"; x: number; y: number; card: string; roots: string[]; base: BoardState; moved: boolean; hint: string | null }
+  | { kind: "resize"; group: string; offset: [number, number] }
   | { kind: "box"; x: number; y: number; add: boolean; before: Set<string>; beforeArrows: Set<string>; end: [number, number] }
   | { kind: "connect"; source: string; end: [number, number] };
 
@@ -225,7 +226,7 @@ export class BoardCanvas {
     const lifted = g?.kind === "move" && g.moved ? this.liftedIds(g.roots) : undefined;
     const link = g?.kind === "connect" ? { source: g.source, end: g.end, click: false }
       : this.linking ? { ...this.linking, click: true } : null;
-    let dropTarget: string | undefined;
+    let dropTarget: string | undefined = g?.kind === "move" && g.moved ? g.hint ?? undefined : undefined;
     let ghost: { rect: Rect; color: string } | undefined;
     if (link) {
       dropTarget = this.connectTarget(link.source, link.end[0], link.end[1], link.click) ?? undefined;
@@ -292,7 +293,7 @@ export class BoardCanvas {
     const h = this.hover;
     this.canvas.style.cursor = this.spaceHeld ? "grab"
       : h.part === "toggle" || h.part === "fold" ? "pointer"
-        : h.part === "port" ? "crosshair" : h.card ? "move" : "";
+        : h.part === "port" ? "crosshair" : h.part === "resize" ? "nwse-resize" : h.card ? "move" : "";
   }
 
   // ----- pointer ---------------------------------------------------------------------
@@ -332,6 +333,14 @@ export class BoardCanvas {
       this.gesture = { kind: "click", x, y, hit, moved: false };
       return;
     }
+    if (hit.part === "resize" && hit.card) {
+      // Keep the grip under the pointer at the same offset while dragging.
+      const b = this.store.boxes.get(hit.card)!;
+      const [px, py] = this.camera.toScene(x, y);
+      this.store.select([hit.card]);
+      this.gesture = { kind: "resize", group: hit.card, offset: [b.x + b.w - px, b.y + b.h - py] };
+      return;
+    }
     if (hit.part === "port" && hit.card) {
       this.gesture = { kind: "connect", source: hit.card, end: [x, y] };
       return;
@@ -347,7 +356,7 @@ export class BoardCanvas {
         this.gesture = { kind: "click", x, y, hit, moved: false };
         return;
       }
-      this.gesture = { kind: "move", x, y, card: hit.card, roots: this.store.moveRoots(), base: this.store.state, moved: false };
+      this.gesture = { kind: "move", x, y, card: hit.card, roots: this.store.moveRoots(), base: this.store.state, moved: false, hint: null };
       return;
     }
     if (hit.arrow) {
@@ -412,12 +421,20 @@ export class BoardCanvas {
         if (!g.moved && Math.hypot(x - g.x, y - g.y) <= CLICK_SLOP) return;
         if (!g.moved) {
           g.moved = true;
-          this.store.moving = true;
+          this.store.beginMove(g.roots);
           // Make-room pushes become the dragged cards' own positions now.
           g.base = this.store.movedBy(g.roots, 0, 0);
         }
         const k = this.camera.scale;
         this.store.preview(this.store.movedBy(g.roots, (x - g.x) / k, (y - g.y) / k, g.base));
+        g.hint = this.store.dropHint(g.roots, ...this.camera.toScene(x, y));
+        return;
+      }
+      case "resize": {
+        const b = this.store.boxes.get(g.group);
+        if (!b) return;
+        const [px, py] = this.camera.toScene(x, y);
+        this.store.preview(this.store.resizedGroup(g.group, px - b.x + g.offset[0], py - b.y + g.offset[1]));
         return;
       }
       case "box":
@@ -456,7 +473,7 @@ export class BoardCanvas {
     const [x, y] = this.local(e);
     if (cancelled) {
       if (g.kind === "move" && g.moved) {
-        store.moving = false;
+        store.endMove();
         store.preview(g.base);
       }
       this.redraw();
@@ -469,13 +486,18 @@ export class BoardCanvas {
         else if (g.hit.card && g.hit.part === "fold") store.setCollapsed([g.hit.card], !store.card(g.hit.card)!.collapsed);
         return;
       case "move":
-        store.moving = false;
         if (!g.moved) {
           // A plain click on a card in a bigger selection selects just that card.
           if (store.selected.size + store.selectedArrows.size > 1) store.select([g.card]);
           return;
         }
         if (this.host.snapToGrid()) store.preview(store.snappedState(g.roots));
+        // Into the group under the pointer (as framed during the drag), or out of its group.
+        store.dropInto(g.roots, ...this.camera.toScene(x, y));
+        store.endMove();
+        store.commit();
+        return;
+      case "resize":
         store.commit();
         return;
       case "box":
@@ -626,6 +648,10 @@ export class BoardCanvas {
     if (!store || e.button !== 0) return;
     const [sx, sy] = this.local(e);
     const hit = this.hitAt(sx, sy);
+    if (hit.part === "resize" && hit.card) {
+      store.fitFrame(hit.card); // back to fitting snugly round its cards
+      return;
+    }
     if (hit.part === "toggle" || hit.part === "fold" || hit.part === "port") return;
     if (hit.arrow) {
       this.host.editArrows([hit.arrow]);
@@ -661,8 +687,10 @@ export class BoardCanvas {
   private cancelGesture(): void {
     const g = this.gesture;
     if (g?.kind === "move" && g.moved && this.store) {
-      this.store.moving = false;
+      this.store.endMove();
       this.store.preview(g.base);
+    } else if (g?.kind === "resize" && this.store) {
+      this.store.preview(this.store.history.current ?? this.store.state);
     }
     this.gesture = null;
     this.redraw();
@@ -697,6 +725,10 @@ export class BoardCanvas {
       e.preventDefault();
       if (store.selected.size === 1) this.host.editCard([...store.selected][0]!, false);
       else if (!store.selected.size) this.host.editArrows([...store.selectedArrows]);
+    } else if (ctrl && e.shiftKey && e.code === "KeyA") {
+      e.preventDefault();
+      const groups = [...store.selected].filter((id) => store.boxes.get(id)?.isGroup);
+      if (groups.length) store.autoArrange(groups);
     } else if (ctrl && !e.shiftKey && e.code === "KeyD") {
       e.preventDefault(); // (the browser's bookmark key)
       store.duplicate();
@@ -786,6 +818,7 @@ export class BoardCanvas {
     if (hit.part === "toggle") return box.detailsVisible ? "Hide details" : "Show details";
     if (hit.part === "fold") return box.card.collapsed ? "Expand group" : "Collapse group";
     if (hit.part === "port" && hasPort(box, store.state.display)) return "Drag to another card to connect them";
+    if (hit.part === "resize") return "Drag to resize the frame; double-click to fit it to its cards";
     return "";
   }
 

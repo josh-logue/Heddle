@@ -19,7 +19,7 @@ export const MAJOR_EVERY = 5;
 /** What the pointer is over, for hover effects. */
 export interface Hover {
   card?: string;
-  part?: "port" | "toggle" | "fold" | "body";
+  part?: "port" | "toggle" | "fold" | "resize" | "body";
   arrow?: string;
 }
 
@@ -238,6 +238,8 @@ function drawCard(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, displ
   ctx.stroke(path);
   ctx.setLineDash([]);
 
+  if (b.isGroup && !b.card.collapsed) drawResizeGrip(ctx, b, t, hover === "resize");
+
   if (hasPort(b, display)) {
     const [px, py] = portCenter(b);
     const radius = PORT_RADIUS + (hover === "port" ? 2 : 0);
@@ -250,6 +252,18 @@ function drawCard(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, displ
     ctx.stroke();
   }
   ctx.restore();
+}
+
+/** Three diagonal ridges in a group's bottom-right corner. */
+function drawResizeGrip(ctx: CanvasRenderingContext2D, b: CardBox, t: Theme, hot: boolean): void {
+  const grip = t.dark ? lighter(b.card.color, 140) : darker(b.card.color, 120);
+  ctx.strokeStyle = withAlpha(grip, hot ? 255 : 150);
+  ctx.lineWidth = hot ? 1.6 : 1.3;
+  ctx.lineCap = "round";
+  const r = b.w - 4;
+  const bt = b.h - 4;
+  for (const d of [4, 8, 12]) line(ctx, r - d, bt, r, bt - d);
+  ctx.lineCap = "butt";
 }
 
 function line(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number): void {

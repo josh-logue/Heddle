@@ -10,15 +10,17 @@
 
 import { StoryGraph } from "../core/graph.ts";
 import { History, deepEqual } from "../core/history.ts";
-import { V_GAP } from "../core/layout.ts";
+import { V_GAP, arrange, edgeKey, makeNode } from "../core/layout.ts";
 import {
   CARD_COLORS, KIND_GROUP, boardToJson, cloneFragment, makeBoard, makeCard, newId,
   type BoardData, type CardData, type ConnectionData, type Display, type RouteData, type SavedValues,
   type StrandInfo,
 } from "../core/model.ts";
-import { CARD_WIDTH, Layouter, Structure, type CardBox, type Rect } from "./metrics.ts";
-import { routeArrows, type ArrowShape } from "./routing.ts";
-import type { TextMeasurer } from "./text.ts";
+import {
+  CARD_WIDTH, GROUP_MIN_BODY, GROUP_MIN_WIDTH, GROUP_PAD, Layouter, Structure, type CardBox, type Rect,
+} from "./metrics.ts";
+import { labelTexts, routeArrows, type ArrowShape } from "./routing.ts";
+import { lineHeight, type TextMeasurer } from "./text.ts";
 
 export const GRID = 25;
 export const PUSH_GAP = V_GAP;
@@ -26,6 +28,20 @@ export const NUDGE_STEP = 10;
 export const NUDGE_FINE = 1;
 /** Pasting or duplicating without a pointer position: this far from the originals. */
 export const PASTE_OFFSET = 30;
+/** Space left by group commands: cards stepped out beside a frame, grids of new members. */
+export const ARRANGE_GAP = 30;
+export const ARRANGE_COLUMNS = 3;
+
+/** A group's arrange options (also on its right-click menu). */
+export type ArrangeOptions = Partial<Pick<CardData, "arrange_by_color" | "arrange_vertical" | "arrange_grid" | "arrange_wrap">>;
+
+/** Extra changes the card editor can make along with a card's fields, in one undo step. */
+export interface CardEditExtras {
+  /** For a group: exactly these cards become its direct members. */
+  members?: readonly string[];
+  /** For a group: auto-arrange it afterwards ("Save & auto-arrange"). */
+  arrange?: boolean;
+}
 
 export interface BoardState {
   readonly cards: readonly CardData[];
@@ -95,6 +111,9 @@ export class BoardStore {
   private layouter!: Layouter;
   private layoutKey: unknown[] = [];
   private graph: StoryGraph | null = null;
+  /** During a drag: the frames of the groups around what's moving, held still (the
+   *  desktop refits them only when the drag ends, so a card can be dragged out). */
+  private frozen = new Map<string, CardBox>();
   private readonly listeners = new Set<Listener>();
 
   constructor(board: BoardData, private readonly m: TextMeasurer) {
@@ -161,6 +180,10 @@ export class BoardStore {
     }
     this.layouter.structure = this.structure;
     this.boxes = this.layouter.all(s.cards);
+    for (const [id, box] of this.frozen) {
+      const now = this.boxes.get(id);
+      if (now) this.boxes.set(id, { ...box, visible: now.visible });
+    }
     for (const id of this.selected) if (!this.boxes.get(id)?.visible) this.selected.delete(id);
     const ids = new Set(s.connections.map((c) => c.id));
     for (const id of this.selectedArrows) if (!ids.has(id)) this.selectedArrows.delete(id);
@@ -301,6 +324,24 @@ export class BoardStore {
     return this.replaceCards(changes, base);
   }
 
+  /** A drag of `roots` starts: hold the frames of the groups around them still. */
+  beginMove(roots: readonly string[]): void {
+    const moving = new Set(roots.flatMap((r) => this.carried(r)));
+    this.frozen.clear();
+    for (const r of roots) {
+      for (const a of this.structure.ancestors(r)) {
+        if (!moving.has(a)) this.frozen.set(a, { ...this.boxes.get(a)! });
+      }
+    }
+    this.moving = true;
+  }
+
+  /** The drag is over: frames fit their cards again (at the next refresh). */
+  endMove(): void {
+    this.frozen.clear();
+    this.moving = false;
+  }
+
   /** Move the selection by arrow keys (with snap: to the next grid line that way). */
   nudge(dx: number, dy: number, snap = false): boolean {
     const roots = this.moveRoots();
@@ -367,21 +408,25 @@ export class BoardStore {
     this.preview(next);
   }
 
-  /** Replace a card with edited data (one undo step). */
-  updateCard(id: string, data: Partial<CardData>): void {
+  /** Replace a card with edited data, and for a group set its members and maybe arrange
+   *  it: one undo step. A group turned into a card first lets its cards go. */
+  updateCard(id: string, data: Partial<CardData>, extras: CardEditExtras = {}): void {
     const old = this.card(id);
     if (!old) return;
     const next = makeCard({ ...old, ...data, id });
-    if (deepEqual(next, old)) {
-      this.commit(); // (a new card kept as it was still needs recording)
-      return;
+    if (!deepEqual(next, old)) {
+      if (old.kind === KIND_GROUP && next.kind !== KIND_GROUP) this.releaseInto(id, old.parent);
+      let state = this.replaceCards(new Map([[id, next]]));
+      if (next.color !== old.color && !(CARD_COLORS as readonly string[]).includes(next.color)
+          && !state.custom_colors.includes(next.color)) {
+        state = { ...state, custom_colors: [...state.custom_colors, next.color] };
+      }
+      this.state = state;
+      this.refresh();
     }
-    let state = this.replaceCards(new Map([[id, next]]));
-    if (next.color !== old.color && !(CARD_COLORS as readonly string[]).includes(next.color)
-        && !state.custom_colors.includes(next.color)) {
-      state = { ...state, custom_colors: [...state.custom_colors, next.color] };
-    }
-    this.commit(state);
+    if (next.kind === KIND_GROUP && extras.members) this.applyMembers(id, extras.members);
+    if (next.kind === KIND_GROUP && extras.arrange) this.arrangeInPlace(id);
+    this.commit(); // (a new card kept as it was still needs recording)
   }
 
   /** Throw away a card added but never kept (its editor was cancelled). */
@@ -567,6 +612,224 @@ export class BoardStore {
         movers.push([s, r, rectOf(this.boxes.get(s)!)]);
       }
     }
+  }
+
+  // ----- groups ----------------------------------------------------------------------------
+
+  /** The group a drag of `roots` would drop into at (x, y): never one of the moving groups
+   *  or anything inside them. */
+  groupForDrop(roots: readonly string[], x: number, y: number): string | null {
+    const exclude = new Set<string>();
+    for (const r of roots) for (const id of this.carried(r)) exclude.add(id);
+    return this.groupAt(x, y, exclude);
+  }
+
+  /** While dragging: the group to outline, if the drop would change anything. */
+  dropHint(roots: readonly string[], x: number, y: number): string | null {
+    const target = this.groupForDrop(roots, x, y);
+    // All staying put: nothing to announce.
+    if (target !== null && roots.every((r) => this.structure.parentOf.get(r) === target)) return null;
+    return target;
+  }
+
+  /** After a drag: everything that moved goes into the group under the pointer, or out of
+   *  its group if the pointer isn't over one (cards inside a moving group stay in it). A
+   *  card dropped on a collapsed group's title bar goes under its other cards. */
+  dropInto(roots: readonly string[], x: number, y: number): void {
+    const target = this.groupForDrop(roots, x, y);
+    const parentChanges = new Map<string, Partial<CardData>>();
+    for (const r of roots) {
+      const now = this.structure.parentOf.get(r) ?? "";
+      if (now !== (target ?? "")) parentChanges.set(r, { parent: target ?? "" });
+    }
+    if (!parentChanges.size) return;
+    this.state = this.replaceCards(parentChanges);
+    this.refresh();
+    const folded = target !== null && this.card(target)!.collapsed;
+    if (folded) for (const r of parentChanges.keys()) this.park(target!, r);
+  }
+
+  /** Put a card dropped on a collapsed group under its other cards (where it'll be when the
+   *  group unfolds), not on the title bar. */
+  private park(group: string, id: string): void {
+    const others = (this.structure.members.get(group) ?? []).filter((m) => m !== id).map((m) => this.boxes.get(m)!);
+    const g = this.boxes.get(group)!;
+    const b = this.boxes.get(id)!;
+    const [x, y] = others.length
+      ? [Math.min(...others.map((o) => o.x)), Math.max(...others.map((o) => o.y + o.h)) + ARRANGE_GAP]
+      : [g.x + GROUP_PAD, g.y + g.headerH + GROUP_PAD];
+    this.state = this.movedBy([id], x - b.x, y - b.y);
+    this.refresh();
+  }
+
+  /** Take a card out of its group, into the group around that one, stepped just outside
+   *  the frame so it doesn't look as if it's still inside. One undo step. */
+  removeFromGroup(id: string): void {
+    const group = this.structure.parentOf.get(id);
+    if (group === undefined) return;
+    const frame = this.boxes.get(group)!;
+    const b = this.boxes.get(id)!;
+    let next = this.replaceCards(new Map([[id, { parent: this.structure.parentOf.get(group) ?? "" }]]));
+    next = this.movedBy([id], frame.x + frame.w + ARRANGE_GAP - b.x, 0, next);
+    this.commit(next);
+  }
+
+  /** Ungroup: the group's cards move up to its own group and stay where they are. */
+  ungroup(id: string): void {
+    this.releaseInto(id, this.structure.parentOf.get(id) ?? "");
+    this.commit();
+  }
+
+  private releaseInto(id: string, parent: string): void {
+    const members = this.structure.members.get(id) ?? [];
+    if (!members.length) return;
+    this.state = this.replaceCards(new Map(members.map((m) => [m, { parent }])));
+    this.refresh();
+  }
+
+  /** Who could go in a group: everything but the group itself and the groups around it
+   *  (that would make a loop), as [id, label, is a member], by title. */
+  memberCandidates(id: string): [string, string, boolean][] {
+    const blocked = new Set([id, ...this.structure.ancestors(id)]);
+    return this.state.cards.filter((c) => !blocked.has(c.id))
+      .map((c) => {
+        let label = c.title || "Untitled";
+        if (c.kind === KIND_GROUP) label += "  [group]";
+        const parent = this.structure.parentOf.get(c.id);
+        if (parent !== undefined && parent !== id) label += `  · in “${this.card(parent)!.title || "Untitled"}”`;
+        return [c.id, label, parent === id] as [string, string, boolean];
+      })
+      .sort((a, b) => (a[1].toLowerCase() < b[1].toLowerCase() ? -1 : a[1].toLowerCase() > b[1].toLowerCase() ? 1 : 0));
+  }
+
+  /** Make exactly `ids` the group's direct members: new ones go in a grid inside the
+   *  frame, below what's there; removed ones are placed beside it. */
+  private applyMembers(group: string, ids: readonly string[]): void {
+    const wanted = new Set(ids);
+    const blocked = new Set([group, ...this.structure.ancestors(group)]);
+    const outer = this.structure.parentOf.get(group) ?? "";
+    const frame = this.boxes.get(group)!;
+    let outY = frame.y;
+    for (const m of [...(this.structure.members.get(group) ?? [])]) {
+      if (wanted.has(m)) continue;
+      const b = this.boxes.get(m)!;
+      let next = this.replaceCards(new Map([[m, { parent: outer }]]));
+      next = this.movedBy([m], frame.x + frame.w + ARRANGE_GAP * 2 - b.x, outY - b.y, next);
+      outY += b.h + ARRANGE_GAP;
+      this.state = next;
+      this.refresh();
+    }
+    const toAdd = ids.filter((i) => this.boxes.has(i) && !blocked.has(i) && this.structure.parentOf.get(i) !== group);
+    if (!toAdd.length) return;
+    const existing = (this.structure.members.get(group) ?? []).map((m) => this.boxes.get(m)!);
+    const g = this.boxes.get(group)!;
+    const x0 = existing.length ? Math.min(...existing.map((b) => b.x)) : g.x + GROUP_PAD;
+    let y = existing.length ? Math.max(...existing.map((b) => b.y + b.h)) + ARRANGE_GAP : g.y + g.headerH + GROUP_PAD;
+    let x = x0;
+    let rowH = 0;
+    let col = 0;
+    for (const m of toAdd) {
+      const b = this.boxes.get(m)!;
+      let next = this.replaceCards(new Map([[m, { parent: group }]]));
+      next = this.movedBy([m], x - b.x, y - b.y, next); // a nested group brings its cards
+      this.state = next;
+      rowH = Math.max(rowH, b.h);
+      col++;
+      if (col >= ARRANGE_COLUMNS) {
+        [x, y, rowH, col] = [x0, y + rowH + ARRANGE_GAP, 0, 0];
+      } else {
+        x += b.w + ARRANGE_GAP;
+      }
+    }
+    this.refresh();
+  }
+
+  setArrangeOptions(ids: readonly string[], options: ArrangeOptions): void {
+    this.commit(this.replaceCards(new Map(ids.filter((i) => this.boxes.get(i)?.isGroup).map((i) => [i, options]))));
+  }
+
+  /** Auto-arrange groups (heddle/layout.py): one undo step. */
+  autoArrange(ids: readonly string[]): void {
+    for (const id of ids) this.arrangeInPlace(id);
+    this.commit();
+  }
+
+  /** Lay out a group's cards by their arrows, fit the frame snugly, and push aside what
+   *  the grown frame now covers (a group can only grow right or down: it keeps its
+   *  top-left). Arrows to cards inside a nested group count as arrows to that group. */
+  private arrangeInPlace(id: string): void {
+    const members = this.structure.members.get(id) ?? [];
+    if (!members.length || !this.boxes.get(id)?.isGroup) return;
+    const before = new Map<string, Rect>();
+    for (const g of [id, ...this.structure.ancestors(id)]) before.set(g, rectOf(this.boxes.get(g)!));
+    const memberSet = new Set(members);
+    const rep = new Map<string, string>();
+    for (const c of this.state.cards) {
+      if (memberSet.has(c.id)) rep.set(c.id, c.id);
+      else {
+        for (const a of this.structure.ancestors(c.id)) {
+          if (memberSet.has(a)) {
+            rep.set(c.id, a);
+            break;
+          }
+        }
+      }
+    }
+    const edges: [string, string][] = [];
+    const labels = new Map<string, [number, number]>();
+    for (const e of this.state.connections) {
+      const s = rep.get(e.source);
+      const t = rep.get(e.target);
+      if (s === undefined || t === undefined) continue;
+      edges.push([s, t]);
+      const [, text] = labelTexts(e, 0, this.state.display, this.m);
+      if (text) { // room for the widest label between the two
+        const w = this.m.width(text, "edge") + 12;
+        const h = lineHeight(this.m, "edge") + 4;
+        const old = labels.get(edgeKey(s, t)) ?? [0, 0];
+        labels.set(edgeKey(s, t), [Math.max(old[0], w), Math.max(old[1], h)]);
+      }
+    }
+    const nodes = members.map((m) => {
+      const b = this.boxes.get(m)!;
+      return makeNode(m, b.w, b.h, { x: b.x, y: b.y, color: b.card.color.toLowerCase(), group: b.isGroup });
+    });
+    const group = this.card(id)!;
+    const placed = arrange(nodes, edges, {
+      byColor: group.arrange_by_color, vertical: group.arrange_vertical, grid: group.arrange_grid,
+      labels, wrap: group.arrange_wrap,
+    });
+    const g = this.boxes.get(id)!;
+    const ox = g.x + GROUP_PAD;
+    const oy = g.y + g.headerH + GROUP_PAD;
+    let next = this.replaceCards(new Map([[id, { width: 0, height: 0 }]])); // back to a snug fit
+    for (const m of members) {
+      const [x, y] = placed.get(m)!;
+      const b = this.boxes.get(m)!;
+      next = this.movedBy([m], ox + x - b.x, oy + y - b.y, next);
+    }
+    this.state = next;
+    this.refresh();
+    const moves: Move[] = [];
+    this.makeRoom(id, before, moves);
+    this.state = this.movesToState(moves);
+    this.refresh();
+  }
+
+  /** The state with a group's frame sized by hand from its top-left (it still grows to
+   *  hold all its cards). Stored as the frame with details hidden. */
+  resizedGroup(id: string, width: number, height: number): BoardState {
+    const b = this.boxes.get(id)!;
+    const hdr = b.headerH;
+    const hdr0 = b.closedHeaderH;
+    return this.replaceCards(new Map([[id, {
+      x: b.x, y: b.y + hdr - hdr0, width: Math.max(width, GROUP_MIN_WIDTH), height: hdr0 + Math.max(height - hdr, GROUP_MIN_BODY),
+    }]]));
+  }
+
+  /** Back to fitting snugly round the cards. */
+  fitFrame(id: string): void {
+    this.commit(this.replaceCards(new Map([[id, { width: 0, height: 0 }]])));
   }
 
   // ----- copy, cut, paste, duplicate ---------------------------------------------------

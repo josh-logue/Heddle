@@ -83,6 +83,8 @@ export interface CardBox extends Rect {
    *  frame as it looks with details hidden), less any make-room push. */
   anchorX: number;
   anchorY: number;
+  /** Groups: the header panel's height with details hidden (what saved sizes are measured from). */
+  closedHeaderH: number;
 }
 
 export interface LayoutInput {
@@ -306,7 +308,7 @@ function layoutCard(c: CardData, ctx: Ctx, structure: Structure, done: Map<strin
     card: c, isGroup: group, isStrand: c.kind === KIND_STRAND, x: left, y: cy, w: width, h: 0, closedH: 0,
     headerH: HEADER_HEIGHT, blocks: [], tagPills: [], charPills: [], detailsTop: null, detailsVisible,
     memberCount: members.length, introduces, tooltip: "", depth: structure.depth.get(c.id) ?? 0, visible: true,
-    anchorX: c.x, anchorY: c.y,
+    anchorX: c.x, anchorY: c.y, closedHeaderH: HEADER_HEIGHT,
   };
   if (box.isStrand) {
     layoutStrand(box, ctx, inner);
@@ -389,7 +391,7 @@ function layoutCard(c: CardData, ctx: Ctx, structure: Structure, done: Map<strin
 
   if (group) {
     const hdr = (box.headerH = hasFace || detailsVisible ? y : HEADER_HEIGHT);
-    const hdr0 = hasFace ? yWithoutDetails : HEADER_HEIGHT;
+    const hdr0 = (box.closedHeaderH = hasFace ? yWithoutDetails : HEADER_HEIGHT);
     let bodyTop: number;
     let bottom: number;
     if (manual) {

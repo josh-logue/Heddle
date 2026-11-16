@@ -424,7 +424,7 @@ export function App() {
             <p>Map branching and converging story paths: cards on a canvas, joined by arrows.</p>
             <p className="muted">
               Boards stay on your computer: nothing is uploaded. The browser version is still being built:
-              cards, arrows and saving work; groups, story tools and the side panels are on their way.
+              cards, arrows, groups and saving work; story tools, search and the side panels are on their way.
             </p>
             <div className="welcome-actions">
               <button type="button" className="primary" onClick={() => void open()}>Open a board…</button>

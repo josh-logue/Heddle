@@ -58,7 +58,23 @@ export function buildMenu(store: BoardStore, hit: Hover, x: number, y: number, a
       { label: box.detailsVisible ? "Hide details" : "Show details", keys: "D", action: () => store.toggleDetails(id) },
       { label: "Connect to…", keys: "L", action: () => act.startConnect(id) },
     );
-    if (box.isGroup) items.push({ label: "Add card here", action: () => act.addCardAt(x, y, id) });
+    if (box.isGroup) {
+      const g = box.card;
+      const set = (o: Parameters<BoardStore["setArrangeOptions"]>[1]) => store.setArrangeOptions([id], o);
+      const wraps = [...new Set([0, 3, 4, 5, 6, 8, 10, g.arrange_wrap])].sort((a, b) => a - b);
+      items.push(
+        { label: "Add card here", action: () => act.addCardAt(x, y, id) },
+        SEPARATOR,
+        { label: "Auto-arrange cards", keys: "Ctrl+Shift+A", disabled: !box.memberCount, action: () => store.autoArrange([id]) },
+        { label: "Rows by color when arranging", checked: g.arrange_by_color, action: () => set({ arrange_by_color: !g.arrange_by_color }) },
+        { label: "Arrange top to bottom", checked: g.arrange_vertical, action: () => set({ arrange_vertical: !g.arrange_vertical }) },
+        { label: "Unconnected cards in a grid", checked: g.arrange_grid, action: () => set({ arrange_grid: !g.arrange_grid }) },
+        { label: "Wrap rows after", submenu: wraps.map((n) => ({
+          label: n === 0 ? "No limit" : `${n} step${n !== 1 ? "s" : ""}`, checked: n === g.arrange_wrap, action: () => set({ arrange_wrap: n }),
+        })) },
+      );
+      if (g.width > 0 && g.height > 0) items.push({ label: "Fit frame to cards", action: () => store.fitFrame(id) });
+    }
     items.push(
       SEPARATOR,
       { label: `Copy${suffix}`, keys: "Ctrl+C", action: act.copy },
@@ -67,8 +83,10 @@ export function buildMenu(store: BoardStore, hit: Hover, x: number, y: number, a
       { label: "Paste here", keys: "Ctrl+V", action: () => act.pasteAt(x, y), disabled: !act.canPaste() },
       SEPARATOR,
     );
+    if (store.structure.parentOf.has(id)) items.push({ label: "Remove from group", action: () => store.removeFromGroup(id) });
     if (box.isGroup) {
       items.push(
+        { label: "Ungroup (keep cards)", action: () => store.ungroup(id) },
         { label: "Delete group (keep cards)", action: () => store.remove([id]) },
         { label: "Delete group and its cards", keys: "Del", action: () => {
           store.select([id]);

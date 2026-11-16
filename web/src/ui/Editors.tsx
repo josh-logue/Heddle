@@ -1,11 +1,40 @@
 import { useRef, useState } from "react";
 import {
-  ARROW_STYLES, BUILTIN_STATUSES, CARD_COLORS, COLOR_NAMES, allValues, cleanList,
+  ARRANGE_WRAP_MAX, ARROW_STYLES, BUILTIN_STATUSES, CARD_COLORS, COLOR_NAMES, allValues, cleanList,
   type ArrowStyle, type CardData, type CardKind, type ConnectionData,
 } from "../core/model.ts";
 import { casefold } from "../core/pystr.ts";
 import type { BoardStore } from "../board/store.ts";
 import { Dialog } from "./Dialog.tsx";
+
+/** The cards in a group, as a searchable list of checkboxes (desktop: MemberList). */
+function MemberList({ candidates, checked, onChange }: {
+  candidates: [string, string, boolean][]; checked: Set<string>; onChange: (ids: Set<string>) => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const shown = candidates.filter(([, label]) => casefold(label).includes(casefold(filter.trim())));
+  return (
+    <div className="member-list">
+      <input type="search" placeholder="Find a card…" value={filter} aria-label="Find a card"
+             onChange={(e) => setFilter(e.target.value)} />
+      <ul>
+        {shown.map(([cid, label]) => (
+          <li key={cid}>
+            <label>
+              <input type="checkbox" checked={checked.has(cid)} onChange={(e) => {
+                const next = new Set(checked);
+                if (e.target.checked) next.add(cid);
+                else next.delete(cid);
+                onChange(next);
+              }} /> {label}
+            </label>
+          </li>
+        ))}
+        {!shown.length && <li className="muted">{candidates.length ? "No cards match." : "No other cards on the board."}</li>}
+      </ul>
+    </div>
+  );
+}
 import { TokenInput } from "./TokenInput.tsx";
 
 const STRAND_KINDS = [["characters", "Character"], ["locations", "Location"], ["tags", "Tag"], ["status", "Status"]] as const;
@@ -59,13 +88,19 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
   const [outside, setOutside] = useState(card.outside_story);
   const [strandKind, setStrandKind] = useState(card.strand_kind || "characters");
   const [strand, setStrand] = useState(card.strand);
+  const candidates = useState(() => store.memberCandidates(id))[0];
+  const [members, setMembers] = useState(() => new Set(candidates.filter(([, , m]) => m).map(([cid]) => cid)));
+  const [byColor, setByColor] = useState(card.arrange_by_color);
+  const [vertical, setVertical] = useState(card.arrange_vertical);
+  const [grid, setGrid] = useState(card.arrange_grid);
+  const [wrap, setWrap] = useState(card.arrange_wrap);
   const pending = useRef<Record<string, string>>({}).current;
   const board = store.board;
   const suggest = (f: "tags" | "characters" | "locations" | "status") => allValues(board, f);
   const statuses = [...BUILTIN_STATUSES, ...suggest("status").filter((s) => !BUILTIN_STATUSES.some((b) => casefold(b) === casefold(s)))];
   const povChoices = [...characters, ...suggest("characters").filter((c) => !characters.some((x) => casefold(x) === casefold(c)))];
 
-  const ok = () => {
+  const ok = (arrange = false) => {
     // Anything still typed in a chip box is added, as pressing OK does on the desktop.
     const withPending = (values: string[], key: string) => cleanList([...values, pending[key] ?? ""]);
     const chars = withPending(characters, "characters");
@@ -76,7 +111,8 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
       locations: withPending(locations, "locations"), status, notes, outside_story: outside,
       strand_kind: kind === "strand" ? strandKind : "", strand: kind === "strand" ? strand : "",
     };
-    store.updateCard(id, data);
+    if (kind === "group") Object.assign(data, { arrange_by_color: byColor, arrange_vertical: vertical, arrange_grid: grid, arrange_wrap: wrap });
+    store.updateCard(id, data, kind === "group" ? { members: [...members], arrange } : {});
     onClose();
   };
   const cancel = () => {
@@ -86,7 +122,7 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
   const name = kind === "group" ? "group" : kind === "strand" ? "strand card" : "card";
 
   return (
-    <Dialog title={`${isNew ? "New" : "Edit"} ${name}`} onOk={ok} onCancel={cancel} wide>
+    <Dialog title={`${isNew ? "New" : "Edit"} ${name}`} onOk={() => ok()} onCancel={cancel} wide>
       <div className="field">
         <span className="label">Type</span>
         <div className="radios" role="radiogroup" aria-label="Type">
@@ -130,6 +166,29 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
           <textarea id="card-desc" rows={5} value={description} placeholder="What happens in this scene or beat?"
                     onChange={(e) => setDescription(e.target.value)} />
         </div>
+      )}
+      {kind === "group" && (
+        <fieldset className="details">
+          <legend>Cards in this group</legend>
+          <MemberList candidates={candidates} checked={members} onChange={setMembers} />
+          <div className="arrange-row">
+            <label title="When auto-arranging, give each card colour its own row, keeping arrow order left to right">
+              <input type="checkbox" checked={byColor} onChange={(e) => setByColor(e.target.checked)} /> Rows by color
+            </label>
+            <label title="When auto-arranging, run chains downward instead of left to right">
+              <input type="checkbox" checked={vertical} onChange={(e) => setVertical(e.target.checked)} /> Top to bottom
+            </label>
+            <label title="When auto-arranging, wrap cards that have no arrows into a grid">
+              <input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} /> Grid
+            </label>
+            <label title="Start a new row after this many steps (a new column, top to bottom). 0: no limit">
+              Wrap after <input type="number" min={0} max={ARRANGE_WRAP_MAX} value={wrap} aria-label="Wrap after steps"
+                                onChange={(e) => setWrap(Math.max(0, Math.min(ARRANGE_WRAP_MAX, Math.trunc(Number(e.target.value) || 0))))} /> steps
+            </label>
+            <button type="button" onClick={() => ok(true)}
+                    title="Save, then lay the cards out by their arrows and fit the frame round them">Save &amp; auto-arrange</button>
+          </div>
+        </fieldset>
       )}
       {kind !== "strand" && store.state.display.story_tools && (
         <div className="field">

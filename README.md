@@ -12,9 +12,9 @@ through the story, where characters are introduced, and loose ends.
 **Try it in your browser:** open the [Lantern Tide](https://josh-logue.github.io/Heddle/?demo=lantern-tide)
 or [Hollybank Garden](https://josh-logue.github.io/Heddle/?demo=hollybank-garden) demo board, or
 [open one of your own](https://josh-logue.github.io/Heddle/). The browser version is being built
-(see [Web version](#web-version)): so far it can add, edit, move, connect and delete cards,
-undo, and save (in place in Chrome and Edge; other browsers download a copy). Groups, story
-tools and the side panels are still to come. Boards stay on your computer; nothing is uploaded.
+(see [Web version](#web-version)): so far it can add, edit, move, connect, group, arrange
+and delete cards, copy and paste, undo, and save (in place in Chrome and Edge; other browsers
+download a copy). Story tools, search and the side panels are still to come. Boards stay on your computer; nothing is uploaded.
 
 ## Setup
 
