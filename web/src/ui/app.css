@@ -962,13 +962,23 @@ button:disabled {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
 }
 
-.filter-banner {
+/* The filter bar and, just below it, the highlight bar, over the top of the canvas. */
+.banners {
   position: absolute;
   z-index: 25;
   top: 8px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 32px);
+}
+
+.filter-banner {
+  display: flex;
+  max-width: 100%;
   align-items: center;
   gap: 8px;
   padding: 5px 6px 5px 12px;
@@ -1295,4 +1305,172 @@ label.block textarea {
 .swatch-wrap:hover .swatch-remove,
 .swatch-remove:focus-visible {
   display: block;
+}
+
+.highlight-banner span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ----- story panels: Story Checks, Routes, Path Reader ----- */
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.field-row label {
+  flex: none;
+  color: var(--muted);
+}
+
+.field-row select,
+.field-row input,
+.routes-panel input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.routes-panel input[type="search"] {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 6px;
+}
+
+.panel-summary {
+  margin: 8px 0;
+}
+
+.panel-heading {
+  margin: 12px 0 4px;
+}
+
+.checks-tree,
+.checks-tree ul,
+.routes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.checks-tree ul {
+  padding-left: 22px;
+}
+
+.checks-heading,
+.route-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.checks-tree .fold,
+.route-header .fold {
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  flex: none;
+}
+
+.row-button {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 3px 4px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+
+.row-button:hover:not(:disabled) {
+  background: var(--hover, rgba(127, 127, 127, 0.15));
+}
+
+.row-button.strong {
+  font-weight: 600;
+}
+
+.row-button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.route-row {
+  border-bottom: 1px solid var(--border);
+  padding: 2px 0;
+}
+
+.route-meta {
+  flex: none;
+}
+
+.route-body {
+  padding: 0 0 8px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.route-steps {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.pre-wrap {
+  white-space: pre-wrap;
+}
+
+.reader-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  outline: none;
+}
+
+.reader-panel:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.reader-trail {
+  margin: 0;
+}
+
+.reader-card p {
+  margin: 4px 0;
+}
+
+.reader-title {
+  font-size: 1.15rem;
+}
+
+.reader-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reader-choice {
+  text-align: left;
+  padding: 4px 8px;
+}
+
+.reader-nav {
+  align-items: center;
+}
+
+.checks-tree ul .row-button {
+  display: block;
+  width: 100%;
 }

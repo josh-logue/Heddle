@@ -17,7 +17,7 @@ import {
   applyBulkEdit, boardToJson, cleanDisplay, cloneFragment, copyCard, makeBoard, makeCard, newId,
   replaceText, type BulkEdit, type TextField,
   type BoardData, type CardData, type ConnectionData, type Display, type RouteData, type SavedValues,
-  type StrandInfo,
+  type StrandInfo, copyRoute, routeIsBlank, routeKeyId, titleLabels,
 } from "../core/model.ts";
 import {
   CARD_WIDTH, GROUP_MIN_BODY, GROUP_MIN_WIDTH, GROUP_PAD, Layouter, Structure, type CardBox, type Rect,
@@ -118,6 +118,27 @@ export function nextLine(value: number, direction: number): number {
 }
 
 type Move = [id: string, dx: number, dy: number];
+
+/** A path highlight's direction: before and after, only what leads here, only what follows. */
+export type PathMode = "both" | "before" | "after";
+export const PATH_MODES: readonly PathMode[] = ["both", "before", "after"];
+/** Highlights that belong to the story tools, cleared when they're turned off. */
+const STORY_OWNERS = new Set(["thread", "reader", "routes", "checks"]);
+
+/** The highlight showing on the board (heddle/scene_consts.Highlight). View state only:
+ *  not saved, not undoable. */
+export interface Highlight {
+  /** Lit cards. */
+  readonly cards: ReadonlySet<string>;
+  /** Lit arrows (connection ids). */
+  readonly arrows: ReadonlySet<string>;
+  /** The card it's centred on, drawn with a heavier outline. */
+  readonly focus: string | null;
+  /** What the banner says. */
+  readonly label: string;
+  /** Who made it ("paths", "thread", "reader", "checks", "routes"): each clears only its own. */
+  readonly owner: string;
+}
 type Listener = () => void;
 
 export class BoardStore {
@@ -143,6 +164,15 @@ export class BoardStore {
   searchHits = new Map<string, number>();
   /** A card outlined for a moment so the eye finds it (a search match, Go to Card). */
   flash: string | null = null;
+  /** The path, thread, route or check highlight showing, if any. */
+  highlight: Highlight | null = null;
+  /** The cards drawn lit: the highlight's cards and the groups holding them (so their
+   *  frames don't fade). */
+  lit = new Set<string>();
+  /** The character thread showing: its cards in story order (numbered, joined by a line). */
+  thread: { name: string; ids: string[] } | null = null;
+  /** The last path highlight's direction (Shift+H steps it). */
+  pathsMode: PathMode = "both";
 
   private readonly shift = new Map<string, [number, number]>();
   private readonly loans = new Map<string, Move[]>();
@@ -156,6 +186,9 @@ export class BoardStore {
   /** Strands a rename or "Remove unused" took off the board: not kept as saved strands. */
   private letGo = new Set<string>();
   private readonly listeners = new Set<Listener>();
+  /** What "Highlight paths of selection" last followed (the one selected card, "" for
+   *  anything else, null while it's off). */
+  private followed: string | null = null;
 
   constructor(board: BoardData, private readonly m: TextMeasurer) {
     this.state = stateFromBoard(board);
@@ -172,6 +205,7 @@ export class BoardStore {
   }
 
   private notify(): void {
+    this.followSelection();
     this.version++;
     for (const fn of this.listeners) fn();
   }
@@ -230,6 +264,7 @@ export class BoardStore {
     for (const id of this.selectedArrows) if (!ids.has(id)) this.selectedArrows.delete(id);
     this.applyFilter();
     this.reroute();
+    this.refreshHighlight();
   }
 
   // ----- filter, search hits ----------------------------------------------------------
@@ -1392,5 +1427,206 @@ export class BoardStore {
       return { ...e, source: e.target, target: e.source };
     });
     this.commit({ ...this.state, connections });
+  }
+
+  // ----- story tools: highlights, threads, outside the story, routes -----------------------
+
+  /** Light up some cards and arrows and fade the rest (on top of any filter). Groups
+   *  holding a lit card are lit too. Esc or clearHighlight() ends it. */
+  setHighlight(cards: Iterable<string>, arrows: Iterable<string> = [], focus: string | null = null,
+               label = "", owner = ""): void {
+    this.applyHighlight(cards, arrows, focus, label, owner);
+    this.notify();
+  }
+
+  private applyHighlight(cards: Iterable<string>, arrows: Iterable<string>, focus: string | null,
+                         label: string, owner: string): void {
+    if (owner !== "thread") this.thread = null;
+    const ids = new Set([...cards].filter((id) => this.structure.byId.has(id)));
+    this.highlight = { cards: ids, arrows: new Set(arrows), focus, label: label || "Highlight", owner };
+    this.lit = new Set([...ids, ...this.storyGraph().containersOf(ids)]);
+  }
+
+  clearHighlight(): void {
+    if (!this.highlight) return;
+    this.dropHighlight();
+    this.notify();
+  }
+
+  private dropHighlight(): void {
+    this.highlight = null;
+    this.thread = null;
+    this.lit = new Set();
+  }
+
+  /** The highlight's owner ("" if none is showing). */
+  get highlightOwner(): string {
+    return this.highlight?.owner ?? "";
+  }
+
+  /** After every change: a thread is renumbered for the board as it now is; another
+   *  highlight keeps showing for the cards that still exist (and ends when none do); the
+   *  story tools' own highlights end when the story tools are turned off. */
+  private refreshHighlight(): void {
+    const h = this.highlight;
+    if (!h) return;
+    if (STORY_OWNERS.has(h.owner) && !this.state.display.story_tools) {
+      this.dropHighlight();
+    } else if (h.owner === "thread" && this.thread) {
+      if (!this.threadHighlight(this.thread.name)) this.dropHighlight();
+    } else {
+      const ids = [...h.cards].filter((id) => this.structure.byId.has(id));
+      const focus = h.focus !== null && this.structure.byId.has(h.focus) ? h.focus : null;
+      if (!ids.length) this.dropHighlight();
+      else this.applyHighlight(ids, h.arrows, focus, h.label, h.owner);
+    }
+  }
+
+  /** Light up everything that can come before and/or after a card; for a group, before
+   *  and after its contents. Returns the banner text. */
+  highlightPaths(id: string, mode: PathMode = "both"): string {
+    const label = this.pathsHighlight(id, mode);
+    this.notify();
+    return label;
+  }
+
+  private pathsHighlight(id: string, mode: PathMode): string {
+    const graph = this.storyGraph();
+    const before = mode !== "after" ? graph.upstream(id) : new Set<string>();
+    const after = mode !== "before" ? graph.downstream(id) : new Set<string>();
+    const inside = graph.contents(id);
+    const ids = new Set([id, ...inside, ...before, ...after]);
+    const edges = new Set([...graph.arrowsWithin(ids), ...graph.markersFor(ids)]);
+    const title = titleLabels(this.state.cards).get(id) || this.card(id)?.title || "Untitled";
+    const count = (set: Set<string>) => [...set].filter((i) => i !== id && !inside.has(i)).length;
+    const parts = {
+      both: `${count(before)} before, ${count(after)} after`, before: `${count(before)} before`, after: `${count(after)} after`,
+    }[mode];
+    const what = { both: "Paths through", before: "What leads to", after: "What follows" }[mode];
+    const label = `${what} “${title}” · ${parts}`;
+    this.applyHighlight(ids, edges, id, label, "paths");
+    this.pathsMode = mode;
+    return label;
+  }
+
+  /** H: the selected card's paths, or clear them if they're already showing. Returns a
+   *  notice to show ("" if none). */
+  togglePaths(): string {
+    const one = this.selected.size === 1 ? [...this.selected][0]! : null;
+    if (this.highlightOwner === "paths" && (one === null || this.highlight!.focus === one)) {
+      this.clearHighlight();
+      return "";
+    }
+    if (one === null) return "Select one card to highlight its paths";
+    this.highlightPaths(one);
+    return "";
+  }
+
+  /** Shift+H: step the path highlight from before and after to only what leads here, only
+   *  what follows, and round again. With no path highlight, start one on the selected card
+   *  at "only what leads here" (H gives before and after). Returns a notice, or "". */
+  cyclePathsMode(): string {
+    const focus = this.highlightOwner === "paths" ? this.highlight!.focus : null;
+    if (focus !== null && this.structure.byId.has(focus)) {
+      this.highlightPaths(focus, PATH_MODES[(PATH_MODES.indexOf(this.pathsMode) + 1) % PATH_MODES.length]!);
+      return "";
+    }
+    if (this.selected.size !== 1) return "Select one card to highlight its paths";
+    this.highlightPaths([...this.selected][0]!, "before");
+    return "";
+  }
+
+  /** "Highlight paths of selection": selecting one card lights up its paths; selecting
+   *  anything else clears them. Runs as the selection changes (from notify). */
+  private followSelection(): void {
+    const on = this.state.display.follow_paths;
+    const one = on && this.selected.size === 1 ? [...this.selected][0]! : "";
+    const key = on ? one : null;
+    if (key === this.followed) return;
+    this.followed = key;
+    if (!on) return;
+    if (one) this.pathsHighlight(one, "both");
+    else if (this.highlightOwner === "paths") this.dropHighlight();
+  }
+
+  /** Light up the cards featuring a character, numbered in story order and joined by a
+   *  dashed line. Returns the banner text ("" if no card features them). */
+  showThread(name: string): string {
+    const label = this.threadHighlight(name);
+    if (!label && this.highlightOwner === "thread") this.dropHighlight();
+    this.notify();
+    return label;
+  }
+
+  private threadHighlight(name: string): string {
+    const graph = this.storyGraph();
+    const ids = graph.featuring(name);
+    if (!ids.length) return "";
+    const key = casefold(strip(name));
+    const display = this.card(ids[0]!)!.characters.find((c) => casefold(c) === key) ?? strip(name);
+    const arrows = new Set<string>();
+    for (let i = 1; i < ids.length; i++) for (const a of graph.stepArrows(ids[i - 1]!, ids[i]!)) arrows.add(a);
+    const introduced = ids.filter((i) => (this.introductions.get(i) ?? []).some((n) => casefold(n) === key));
+    let label = `Thread: ${display} · ${ids.length} ${ids.length === 1 ? "card" : "cards"}`;
+    if (introduced.length) {
+      const first = titleLabels(this.state.cards).get(introduced[0]!) || "Untitled";
+      label += ` · introduced in “${first}”${introduced.length > 1 ? ` (+${introduced.length - 1} more)` : ""}`;
+    }
+    // The character's own strand cards light up too (they aren't steps of the thread).
+    const strandCards = this.state.cards.filter((c) => c.kind === KIND_STRAND && c.strand_kind === "characters"
+      && casefold(strip(c.strand)) === key).map((c) => c.id);
+    this.applyHighlight([...ids, ...strandCards], arrows, null, label, "thread");
+    this.thread = { name: display, ids };
+    return label;
+  }
+
+  /** A card's number in the thread showing (0 if it isn't on it). */
+  threadNumber(id: string): number {
+    return this.thread ? this.thread.ids.indexOf(id) + 1 : 0;
+  }
+
+  /** O: leave the selected cards out of the story, or put them back if they're all out
+   *  already (one undo step). Strand cards are always outside it, so they're skipped.
+   *  Returns a notice, or "". */
+  toggleOutside(ids: Iterable<string> = this.selected): string {
+    const cards = [...ids].map((id) => this.card(id)).filter((c): c is CardData => !!c && c.kind !== KIND_STRAND);
+    if (!cards.length) return "Select a card to leave it out of the story (or put it back)";
+    const out = cards.some((c) => !c.outside_story);
+    this.commit(this.replaceCards(new Map(cards.map((c) => [c.id, { outside_story: out }]))));
+    return "";
+  }
+
+  /** Saved route fields, by routeKeyId(key). */
+  routeMap(): Map<string, RouteData> {
+    return new Map(this.state.routes.map((r) => [routeKeyId(r.key), r]));
+  }
+
+  routeData(key: readonly string[]): RouteData | null {
+    const id = routeKeyId(key);
+    return this.state.routes.find((r) => routeKeyId(r.key) === id) ?? null;
+  }
+
+  /** Store a route's fields (one undo step); blank fields forget the route. */
+  setRouteData(data: RouteData): void {
+    if (!data.key.length) return;
+    const id = routeKeyId(data.key);
+    const at = this.state.routes.findIndex((r) => routeKeyId(r.key) === id);
+    if (routeIsBlank(data)) {
+      if (at >= 0) this.commit({ ...this.state, routes: this.state.routes.filter((_, i) => i !== at) });
+      return;
+    }
+    if (at >= 0 && deepEqual(this.state.routes[at], data)) return;
+    const routes = [...this.state.routes];
+    if (at >= 0) routes[at] = copyRoute(data);
+    else routes.push(copyRoute(data));
+    this.commit({ ...this.state, routes });
+  }
+
+  /** Forget a route's fields (one undo step). False if it had none. */
+  deleteRouteData(key: readonly string[]): boolean {
+    if (!this.routeData(key)) return false;
+    const id = routeKeyId(key);
+    this.commit({ ...this.state, routes: this.state.routes.filter((r) => routeKeyId(r.key) !== id) });
+    return true;
   }
 }

@@ -41,6 +41,10 @@ export interface CanvasHost {
   snapToGrid(): boolean;
   /** Show a right-click menu at a point on the page. */
   contextMenu(items: MenuItem[], clientX: number, clientY: number): void;
+  /** Open the Path Reader at a card. */
+  read(id: string): void;
+  /** Ask which character's thread to show (T). */
+  chooseThread(): void;
 }
 
 type Listener = () => void;
@@ -137,10 +141,12 @@ export class BoardCanvas {
       if (mine() && this.paste(e as ClipboardEvent)) e.preventDefault();
     });
     this.on(canvas, "keydown", (e) => this.keyDown(e as KeyboardEvent));
-    // Space pans whenever the pointer is over the canvas, unless you're typing somewhere.
+    // Space pans whenever the pointer is over the canvas, unless you're typing somewhere
+    // or the keyboard is in something that uses Space itself (the Path Reader: next).
     this.on(window, "keydown", (e) => {
       const k = e as KeyboardEvent;
-      if (k.code === "Space" && !typing(k) && this.lastPointer && !k.repeat) {
+      const usesSpace = (k.target as HTMLElement | null)?.closest?.("[data-uses-space]");
+      if (k.code === "Space" && !typing(k) && !usesSpace && this.lastPointer && !k.repeat) {
         this.spaceHeld = true;
         this.canvas.style.cursor = "grab";
         k.preventDefault();
@@ -658,6 +664,7 @@ export class BoardCanvas {
       canPaste: canPasteHere,
       deleteSelection: () => void this.deleteSelection(),
       notice: (text) => this.host.notice(text),
+      read: (id) => this.host.read(id),
     });
     this.host.contextMenu(items, e.clientX, e.clientY);
   }
@@ -758,6 +765,7 @@ export class BoardCanvas {
         this.updateCursor();
         this.redraw();
       } else if (this.gesture) this.cancelGesture();
+      else if (store.highlight) store.clearHighlight();
       else store.clearSelection();
       e.preventDefault();
     } else if (e.key in arrows && !ctrl && !e.altKey && store.selected.size) {
@@ -804,6 +812,17 @@ export class BoardCanvas {
       e.preventDefault();
       const ids = [...store.selected];
       store.setDetails(ids, !ids.every((id) => store.details.has(id)));
+    } else if (!ctrl && !e.altKey && e.code === "KeyH") {
+      e.preventDefault(); // H: paths before and after (again: clear); Shift+H: step the direction
+      const notice = e.shiftKey ? store.cyclePathsMode() : store.togglePaths();
+      if (notice) this.host.notice(notice);
+    } else if (!ctrl && !e.altKey && !e.shiftKey && e.code === "KeyO" && store.state.display.story_tools) {
+      e.preventDefault();
+      const notice = store.toggleOutside();
+      if (notice) this.host.notice(notice);
+    } else if (!ctrl && !e.altKey && !e.shiftKey && e.code === "KeyT" && store.state.display.story_tools) {
+      e.preventDefault(); // (Ctrl+T on the desktop: the browser keeps that one)
+      this.host.chooseThread();
     } else if (!ctrl && !e.altKey && !e.shiftKey && e.code === "KeyC" && store.selected.size) {
       e.preventDefault();
       const groups = [...store.selected].filter((id) => store.boxes.get(id)?.isGroup);

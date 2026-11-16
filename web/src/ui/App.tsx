@@ -28,6 +28,11 @@ import { Confirm } from "./Dialog.tsx";
 import { ArrowEditor, CardEditor } from "./Editors.tsx";
 import { ContextMenu } from "./ContextMenu.tsx";
 import type { MenuItem } from "../canvas/menus.ts";
+import { PathReader } from "../board/reader.ts";
+import { ChecksPanel } from "./panels/ChecksPanel.tsx";
+import { RoutesPanel } from "./panels/RoutesPanel.tsx";
+import { ReaderPanel } from "./panels/ReaderPanel.tsx";
+import { RouteDialog, ThreadChooser } from "./StoryDialogs.tsx";
 
 const THEMES = ["system", "light", "dark"] as const;
 type ThemeChoice = (typeof THEMES)[number];
@@ -60,7 +65,9 @@ type Modal =
   | { kind: "rename"; strandKind: StrandKind; value: string }
   | { kind: "checklist"; title: string; intro: string; values: Record<string, string[]>; okLabel: string;
       extra?: Record<string, string[]>; extraLabel?: string; onOk: (chosen: Record<string, string[]>) => void }
-  | { kind: "applyFields"; strandKind: StrandKind; source: string };
+  | { kind: "applyFields"; strandKind: StrandKind; source: string }
+  | { kind: "route"; key: string[]; steps: string[]; defaultName: string }
+  | { kind: "thread" };
 
 /** The side panels, their keys, and where each one opens by default. */
 const PANELS: { id: string; title: string; keys: string; tip: string }[] = [
@@ -68,7 +75,12 @@ const PANELS: { id: string; title: string; keys: string; tip: string }[] = [
   { id: "filter", title: "Filter", keys: "Ctrl+L", tip: "Fade out the cards that don't have the tags, characters, colours… you tick" },
   { id: "cardList", title: "Card List", keys: "Ctrl+Shift+L", tip: "Every card on the board, group by group in story order: click one to find it" },
   { id: "strands", title: "Strands", keys: "Ctrl+Shift+B", tip: "Every strand on the board, where it's used, and its description and fields" },
+  { id: "checks", title: "Story Checks", keys: "Ctrl+Shift+K", tip: "Show dead ends, extra starts, loops, loose cards and routes" },
+  { id: "routes", title: "Routes", keys: "Ctrl+Shift+O", tip: "List every route from a start to an end, each with its own fields" },
+  { id: "reader", title: "Path Reader", keys: "", tip: "Walk through the story card by card from the card you read from" },
 ];
+/** Panels that belong to the story tools: hidden (and closed) while they're off. */
+const STORY_PANELS = new Set(["checks", "routes", "reader"]);
 
 interface PanelLayout {
   open: string[];
@@ -336,6 +348,54 @@ export function App() {
   }, [store]);
   const searchMatches = useCallback(() => matchesFor(query), [matchesFor, query]);
 
+  // ----- story tools ------------------------------------------------------------------------
+  const canvasRef = useRef(canvas);
+  useEffect(() => {
+    canvasRef.current = canvas;
+  }, [canvas]);
+  /** The Path Reader's walk, one per board; each step selects its card and brings it into view. */
+  const reader = useMemo(() => store && new PathReader(store, (id) => {
+    store.reveal([id]);
+    store.select([id]);
+    const b = store.boxes.get(store.structure.visibleEnd(id));
+    if (b) canvasRef.current?.centerOn(b.x + b.w / 2, b.y + b.h / 2);
+  }), [store]);
+  useEffect(() => () => reader?.dispose(), [reader]);
+  const [readerFocus, setReaderFocus] = useState(0); // bumped to hand the keyboard to the reader
+
+  /** Select cards (story check results, a route) and bring them all into view. */
+  const showCards = useCallback((ids: string[]) => {
+    if (!store || !canvas || !ids.length) return;
+    store.reveal(ids);
+    store.select(ids);
+    const boxes = ids.map((id) => store.boxes.get(id)).filter((b) => b !== undefined);
+    if (!boxes.length) return;
+    const x1 = Math.min(...boxes.map((b) => b.x));
+    const y1 = Math.min(...boxes.map((b) => b.y));
+    const x2 = Math.max(...boxes.map((b) => b.x + b.w));
+    const y2 = Math.max(...boxes.map((b) => b.y + b.h));
+    canvas.centerOn((x1 + x2) / 2, (y1 + y2) / 2);
+  }, [store, canvas]);
+
+  /** Open the Path Reader at a card (default: the selected one). */
+  const readFrom = useCallback((id?: string) => {
+    if (!store || !reader || !store.state.display.story_tools) return;
+    const start = id ?? (store.selected.size === 1 ? [...store.selected][0]! : null);
+    if (start === null) {
+      setNotice("Select one card to read from it");
+      return;
+    }
+    showPanel("reader", true);
+    reader.start(start);
+    setReaderFocus((n) => n + 1);
+  }, [store, reader, showPanel]);
+
+  const chooseThread = useCallback(() => {
+    if (!store || !store.state.display.story_tools) return;
+    if (!store.allValues("characters").length) setNotice("No card has any characters yet");
+    else setModal({ kind: "thread" });
+  }, [store]);
+
   /** Show a card: unfold its groups, select it, bring it into view and outline it briefly. */
   const showCard = useCallback((id: string) => {
     if (!store || !canvas) return;
@@ -491,6 +551,15 @@ export function App() {
       } else if (ctrl && e.shiftKey && e.code === "KeyB" && store) {
         e.preventDefault();
         showPanel("strands");
+      } else if (ctrl && e.shiftKey && e.code === "KeyK" && store && store.state.display.story_tools) {
+        e.preventDefault();
+        showPanel("checks");
+      } else if (ctrl && e.shiftKey && e.code === "KeyO" && store && store.state.display.story_tools) {
+        e.preventDefault(); // (Chrome's bookmark manager)
+        showPanel("routes");
+      } else if (ctrl && e.shiftKey && e.code === "KeyR" && store && store.state.display.story_tools) {
+        e.preventDefault(); // (the browser's hard reload)
+        readFrom();
       } else if (ctrl && !e.shiftKey && e.code === "KeyR" && store) {
         e.preventDefault(); // (the browser's reload key)
         renameStrand();
@@ -516,7 +585,7 @@ export function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [canvas, modal, save, open, undo, redo, toggleAllDetails, toggleAllCollapsed, store, searchStep, showPanel, renameStrand]);
+  }, [canvas, modal, save, open, undo, redo, toggleAllDetails, toggleAllCollapsed, store, searchStep, showPanel, renameStrand, readFrom]);
 
   const host = useMemo<CanvasHost>(() => ({
     editCard: (id, isNew) => setModal({ kind: "card", id, isNew }),
@@ -526,12 +595,18 @@ export function App() {
     notice: (text) => setNotice(text),
     snapToGrid: () => snap,
     contextMenu: (items, x, y) => setModal({ kind: "menu", items, x, y }),
-  }), [confirm, snap]);
+    read: (id) => readFrom(id),
+    chooseThread,
+  }), [confirm, snap, readFrom, chooseThread]);
 
   const closeMenu = useCallback(() => {
     setModal((m) => (m?.kind === "menu" ? null : m));
+    // The keyboard goes back to the board, unless the command handed it to something else
+    // (a dialog, or the Path Reader for "Read from here").
     requestAnimationFrame(() => {
-      if (!document.querySelector("dialog[open]")) canvas?.canvas.focus({ preventScroll: true });
+      const at = document.activeElement;
+      const loose = !at || at === document.body || !!at.closest(".context-menu");
+      if (loose && !document.querySelector("dialog[open]")) canvas?.canvas.focus({ preventScroll: true });
     });
   }, [canvas]);
 
@@ -567,7 +642,9 @@ export function App() {
     card: { id: "card", title: "Card", render: () => (
       <CardPanel store={store} onEditCard={(id) => setModal({ kind: "card", id, isNew: false })} onEditSeveral={() => setModal({ kind: "multi" })} />
     ) },
-    filter: { id: "filter", title: "Filter", render: () => <FilterPanel store={store} /> },
+    filter: { id: "filter", title: "Filter", render: () => (
+      <FilterPanel store={store} onMenu={(items, x, y) => setModal({ kind: "menu", items, x, y })} />
+    ) },
     cardList: { id: "cardList", title: "Card List", render: () => <CardListPanel store={store} onShow={showListed} /> },
     strands: { id: "strands", title: "Strands", render: () => (
       <StrandsPanel store={store} act={{
@@ -582,7 +659,15 @@ export function App() {
         },
       }} />
     ) },
+    checks: { id: "checks", title: "Story Checks", render: () => <ChecksPanel store={store} onShow={showCards} /> },
+    routes: { id: "routes", title: "Routes", render: () => (
+      <RoutesPanel store={store} onShow={showCards}
+                   onEdit={(key, steps, defaultName) => setModal({ kind: "route", key, steps, defaultName })} />
+    ) },
+    reader: { id: "reader", title: "Path Reader", render: () => <ReaderPanel key={readerFocus} reader={reader!} autoFocus={readerFocus > 0} /> },
   } : {};
+  const storyTools = store?.state.display.story_tools ?? true;
+  if (!storyTools) for (const id of STORY_PANELS) delete panelDefs[id];
   const sidebar = (side: Side) => {
     const panels = layout.open.filter((id) => panelDefs[id] && panelSide(id) === side).map((id) => panelDefs[id]!);
     return (
@@ -597,6 +682,18 @@ export function App() {
     );
   };
   const filterPanelShown = isOpen("filter") && layout.active[panelSide("filter")] === "filter";
+  /** Is a panel showing (open, and the front tab on its side)? */
+  const shownPanel = (id: string) => {
+    if (!isOpen(id) || !panelDefs[id]) return false;
+    const side = panelSide(id);
+    const onSide = layout.open.filter((x) => panelDefs[x] && panelSide(x) === side);
+    return (onSide.includes(layout.active[side] ?? "") ? layout.active[side] : onSide[0]) === id;
+  };
+  const readerShown = shownPanel("reader");
+  // Closing the Path Reader (or tabbing away from it) ends the reading and its highlight.
+  useEffect(() => {
+    if (!readerShown) reader?.stop();
+  }, [readerShown, reader]);
 
   return (
     <div className="app">
@@ -664,10 +761,10 @@ export function App() {
           <details className="menu right">
             <summary>Panels</summary>
             <div className="menu-items narrow">
-              {PANELS.map((pd) => (
+              {PANELS.filter((pd) => storyTools || !STORY_PANELS.has(pd.id)).map((pd) => (
                 <label key={pd.id} className="menu-check" title={pd.tip}>
                   <input type="checkbox" checked={isOpen(pd.id)} onChange={(e) => showPanel(pd.id, e.target.checked)} /> {pd.title}
-                  <kbd>{pd.keys}</kbd>
+                  {pd.keys && <kbd>{pd.keys}</kbd>}
                 </label>
               ))}
             </div>
@@ -693,6 +790,30 @@ export function App() {
                   }} /> Snap cards to the grid
                 </label>
                 <button type="button" onClick={() => setModal({ kind: "options" })}>Board options…<span className="muted">Saved with this board</span></button>
+                <hr />
+                <p className="menu-heading">Story</p>
+                <label className="menu-check" title="★ introductions, Story Checks, Routes, the Path Reader and character threads. Turn off for a board that just sorts things into groups.">
+                  <input type="checkbox" checked={storyTools} onChange={(e) => store.setDisplay({ story_tools: e.target.checked })} /> Story tools
+                </label>
+                <button type="button" title="Light up everything that can come before and after the selected card (H again clears)"
+                        onClick={() => { const n = store.togglePaths(); if (n) setNotice(n); }}>Highlight paths<kbd>H</kbd></button>
+                <button type="button" title="Switch the path highlight between before and after, only what leads here and only what follows"
+                        onClick={() => { const n = store.cyclePathsMode(); if (n) setNotice(n); }}>Highlight before / after<kbd>Shift+H</kbd></button>
+                <label className="menu-check" title="While on, selecting a card lights up its paths">
+                  <input type="checkbox" checked={store.state.display.follow_paths}
+                         onChange={(e) => store.setDisplay({ follow_paths: e.target.checked })} /> Highlight paths of selection
+                </label>
+                {storyTools && (
+                  <>
+                    <button type="button" title="Leave the selected cards out of the story tools, or put them back"
+                            onClick={() => { const n = store.toggleOutside(); if (n) setNotice(n); }}>Not part of the story<kbd>O</kbd></button>
+                    <button type="button" title="Walk through the story from the selected card in the Path Reader"
+                            onClick={() => readFrom()}>Read from selected card<kbd>Ctrl+Shift+R</kbd></button>
+                    <button type="button" title="Light up every card featuring a character, numbered in story order"
+                            onClick={chooseThread}>Character thread…<kbd>T</kbd></button>
+                  </>
+                )}
+                {store.highlight && <button type="button" onClick={() => store.clearHighlight()}>Clear highlight<kbd>Esc</kbd></button>}
                 <hr />
               </>
             )}
@@ -733,7 +854,7 @@ export function App() {
             <p>Map branching and converging story paths: cards on a canvas, joined by arrows.</p>
             <p className="muted">
               Boards stay on your computer: nothing is uploaded. The browser version is still being built:
-              cards, arrows, groups, search, strands and saving work; the story tools are on their way.
+              cards, arrows, groups, search, strands, the story tools and saving work; autosave, backups and export are on their way.
             </p>
             <div className="welcome-actions">
               <button type="button" className="primary" onClick={() => void open()}>Open a board…</button>
@@ -756,11 +877,21 @@ export function App() {
             </p>
           </section>
         )}
-        {store?.filterActive && (
-          <div className="filter-banner" role="status">
-            <span><strong>Filter on</strong> · showing {describeCounts(store.filterCounts)}{matchNote(store) ? ` · ${matchNote(store)}` : ""}</span>
-            {!filterPanelShown && <button type="button" onClick={() => showPanel("filter", true)}>Show filter</button>}
-            <button type="button" onClick={() => store.setFilter(new Map(), store.filter.matchAll)}>Clear</button>
+        {(store?.filterActive || store?.highlight) && (
+          <div className="banners">
+            {store.filterActive && (
+              <div className="filter-banner" role="status">
+                <span><strong>Filter on</strong> · showing {describeCounts(store.filterCounts)}{matchNote(store) ? ` · ${matchNote(store)}` : ""}</span>
+                {!filterPanelShown && <button type="button" onClick={() => showPanel("filter", true)}>Show filter</button>}
+                <button type="button" onClick={() => store.setFilter(new Map(), store.filter.matchAll)}>Clear</button>
+              </div>
+            )}
+            {store.highlight && (
+              <div className="filter-banner highlight-banner" role="status">
+                <span><strong>{store.highlight.label}</strong> · Esc to clear</span>
+                <button type="button" onClick={() => store.clearHighlight()}>Clear</button>
+              </div>
+            )}
           </div>
         )}
         {dragging && <div className="drop-hint">Drop a board file to open it</div>}
@@ -822,6 +953,15 @@ export function App() {
                        setNotice(changed ? `Added ${added} field${added === 1 ? "" : "s"} to ${changed} ${changed === 1 ? KIND_ONE[k] : plural}`
                          : targets.length === 1 ? `That ${KIND_ONE[k]} already has these fields` : `Those ${plural} already have these fields`);
                      }} />
+      )}
+      {store && modal?.kind === "route" && (
+        <RouteDialog store={store} routeKey={modal.key} steps={modal.steps} defaultName={modal.defaultName} onClose={closeModal} />
+      )}
+      {store && modal?.kind === "thread" && (
+        <ThreadChooser store={store} onClose={closeModal} onPick={(name) => {
+          closeModal();
+          if (!store.showThread(name)) setNotice(`No card features ${name}`);
+        }} />
       )}
       {modal?.kind === "menu" && <ContextMenu items={modal.items} x={modal.x} y={modal.y} onClose={closeMenu} />}
       {modal?.kind === "confirm" && (

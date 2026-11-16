@@ -154,6 +154,10 @@ function StrandDetails({ store, kind, name, act }: { store: BoardStore; kind: St
       <div className="row wrap">
         <button type="button" onClick={() => act.rename(kind, name)} title="Rename it on every card (merging with a strand of the new name)">Rename…</button>
         <button type="button" disabled={!cards.length} onClick={() => act.selectCards(cards)}>Select cards</button>
+        {kind === "characters" && store.state.display.story_tools && (
+          <button type="button" disabled={!usage[0]} onClick={() => store.showThread(name)}
+                  title="Light up every card featuring this character, in story order">Show thread</button>
+        )}
         <button type="button" onClick={() => act.addToBoard(kind, name)} title="Add a strand card for it to the middle of the board">Add to board</button>
       </div>
       <label className="block">Description

@@ -1,6 +1,5 @@
 // The right-click menus for a card, group, arrow or the canvas (heddle/scene_menus.py),
-// as data: the UI draws them. Items for later stages (highlight paths, reading, threads,
-// auto-arrange, ungroup) join as those stages land.
+// as data: the UI draws them.
 
 import { ARROW_STYLES, CARD_COLORS, COLOR_NAMES } from "../core/model.ts";
 import type { BoardStore } from "../board/store.ts";
@@ -32,9 +31,35 @@ export interface MenuActions {
   canPaste(): boolean;
   deleteSelection(): void;
   notice(text: string): void;
+  /** Open the Path Reader at a card. */
+  read(id: string): void;
 }
 
 const STYLE_LABELS: Record<string, string> = { solid: "Solid", dashed: "Dashed", dotted: "Dotted" };
+
+/** Highlight paths, and with the story tools on: not part of the story, read from here,
+ *  character threads (heddle/scene_menus._add_path_actions). */
+function pathItems(store: BoardStore, id: string, act: MenuActions): MenuItem[] {
+  const card = store.card(id)!;
+  const items: MenuItem[] = [{
+    label: "Highlight paths", submenu: [
+      { label: "Before and after", keys: "H", action: () => store.highlightPaths(id, "both") },
+      { label: "Only what leads here", action: () => store.highlightPaths(id, "before") },
+      { label: "Only what follows", action: () => store.highlightPaths(id, "after") },
+    ],
+  }];
+  if (store.state.display.story_tools) {
+    items.push(
+      { label: "Not part of the story", keys: "O", checked: card.outside_story, action: () => store.toggleOutside([id]) },
+      { label: "Read from here", keys: "Ctrl+Shift+R", action: () => act.read(id) },
+    );
+    if (card.characters.length) {
+      items.push({ label: "Character thread", submenu: card.characters.map((name) => ({ label: name, action: () => store.showThread(name) })) });
+    }
+  }
+  if (store.highlight) items.push({ label: "Clear highlight", keys: "Esc", action: () => store.clearHighlight() });
+  return items;
+}
 
 /** The menu for what was right-clicked at scene point (x, y). */
 export function buildMenu(store: BoardStore, hit: Hover, x: number, y: number, act: MenuActions): MenuItem[] {
@@ -59,6 +84,7 @@ export function buildMenu(store: BoardStore, hit: Hover, x: number, y: number, a
       { label: box.detailsVisible ? "Hide details" : "Show details", keys: "D", action: () => store.toggleDetails(id) },
       { label: "Connect to…", keys: "L", action: () => act.startConnect(id) },
     );
+    if (!box.isStrand) items.push(...pathItems(store, id, act)); // (strand cards are outside the story)
     if (box.isGroup) {
       const g = box.card;
       const set = (o: Parameters<BoardStore["setArrangeOptions"]>[1]) => store.setArrangeOptions([id], o);

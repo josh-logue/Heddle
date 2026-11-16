@@ -5,6 +5,7 @@ import {
 import { KIND_STRAND } from "../../core/model.ts";
 import type { BoardStore } from "../../board/store.ts";
 import { readJson, writeJson } from "../../platform/settings.ts";
+import type { MenuItem } from "../../canvas/menus.ts";
 
 const NOUNS: Record<string, string> = { tags: "tags", characters: "characters", introduces: "introductions", locations: "locations" };
 
@@ -20,10 +21,25 @@ export function matchNote(store: BoardStore): string {
     .map((c) => `all ${NOUNS[c]}`).join(", ");
 }
 
+/** A value's right-click menu (heddle/filter_panel._context_menu): POV and Introduces
+ *  values are characters, so they show threads too. */
+function valueMenu(store: BoardStore, cat: string, value: string): MenuItem[] {
+  const field = ["characters", "pov", "introduces"].includes(cat) ? "characters" : cat;
+  const items: MenuItem[] = [];
+  if (field === "characters" && store.state.display.story_tools) {
+    items.push({ label: `Show thread of “${value}”`, action: () => store.showThread(value) });
+  }
+  return items;
+}
+
 /** The Filter panel (heddle/filter_panel.py): every value on the board as a checkbox, per
  *  category; cards that don't match fade out. Ticked values in one category match any of
  *  them (or, switched to "match all", every one); separate categories must all match. */
-export function FilterPanel({ store }: { store: BoardStore }) {
+export function FilterPanel({ store, onMenu }: {
+  store: BoardStore;
+  /** A value's right-click menu: a character's (POV, introduction's) thread, a rename. */
+  onMenu?: (items: MenuItem[], x: number, y: number) => void;
+}) {
   const [folded, setFolded] = useState<Set<string>>(new Set());
   const story = store.state.display.story_tools;
   const version = store.version;
@@ -99,7 +115,12 @@ export function FilterPanel({ store }: { store: BoardStore }) {
                 <ul>
                   {!opts.length && <li className="muted"><em>No cards yet</em></li>}
                   {opts.map(([key, label, count]) => (
-                    <li key={key}>
+                    <li key={key} onContextMenu={(e) => {
+                      const items = key === NONE_KEY || !onMenu ? [] : valueMenu(store, cat, label);
+                      if (!items.length) return;
+                      e.preventDefault();
+                      onMenu!(items, e.clientX, e.clientY);
+                    }}>
                       <label>
                         <input type="checkbox" checked={selection.get(cat)?.has(key) ?? false}
                                onChange={(e) => toggle(cat, key, e.target.checked)} />

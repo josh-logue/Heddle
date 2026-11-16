@@ -4,7 +4,7 @@
 
 import type { Display } from "../core/model.ts";
 import {
-  CORNER, DIMMED_OPACITY, HEADER_HEIGHT, LOD_TEXT, LOD_TITLE, PAD, PORT_RADIUS, STRAND_MARKS, TOGGLE_SIZE,
+  BADGE_SIZE, CORNER, DIMMED_OPACITY, HEADER_HEIGHT, LOD_TEXT, LOD_TITLE, PAD, PORT_RADIUS, STRAND_MARKS, TOGGLE_SIZE,
   foldRect, hasPort, paintOrder, portCenter, toggleRect, type CardBox, type Rect,
 } from "../board/metrics.ts";
 import { DASH_PATTERNS, LOD_OVERVIEW, type ArrowShape } from "../board/routing.ts";
@@ -58,6 +58,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: DrawState): void {
   const onScreen = (b: Rect) => overlaps(b, view, 12);
   for (const g of groups) if (onScreen(g)) drawCard(ctx, g, s, display, lod);
   for (const a of s.store.arrows) if (overlaps(a.path.bounds(), view, 40)) drawArrow(ctx, a, s, lod);
+  drawThreadLine(ctx, s); // above the arrows, beneath the cards
   for (const c of below) if (onScreen(c)) drawCard(ctx, c, s, display, lod);
   for (const c of above) if (onScreen(c)) drawCard(ctx, c, s, display, lod);
   if (s.ghost) {
@@ -71,6 +72,34 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: DrawState): void {
     ctx.stroke(path);
     ctx.setLineDash([]);
   }
+}
+
+/** Faded: filtered out, or left unlit by a highlight. */
+function faded(s: DrawState, id: string): boolean {
+  return s.store.dimmed.has(id) || (s.store.highlight !== null && !s.store.lit.has(id));
+}
+
+/** A character thread: a dashed line from card to card, in thread order (centres of the
+ *  cards as drawn, or of the collapsed group hiding one). */
+function drawThreadLine(ctx: CanvasRenderingContext2D, s: DrawState): void {
+  const thread = s.store.thread;
+  if (!thread || thread.ids.length < 2) return;
+  const points: [number, number][] = [];
+  for (const id of thread.ids) {
+    const b = s.store.boxes.get(s.store.structure.visibleEnd(id));
+    if (b) points.push([b.x + b.w / 2, b.y + b.h / 2]);
+  }
+  if (points.length < 2) return;
+  const px = 1 / s.camera.scale; // the desktop's cosmetic pen: 2 screen pixels at any zoom
+  ctx.save();
+  ctx.strokeStyle = s.theme.highlight;
+  ctx.lineWidth = 2 * px;
+  ctx.setLineDash([8 * px, 4 * px]);
+  ctx.beginPath();
+  ctx.moveTo(points[0]![0], points[0]![1]);
+  for (const [x, y] of points.slice(1)) ctx.lineTo(x, y);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function overlaps(r: Rect, v: Rect, margin: number): boolean {
@@ -130,13 +159,13 @@ function drawCard(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, displ
   const color = b.card.color;
   if (lod < LOD_TITLE) {
     ctx.save();
-    if (s.store.dimmed.has(b.card.id)) ctx.globalAlpha = DIMMED_OPACITY;
+    if (faded(s, b.card.id)) ctx.globalAlpha = DIMMED_OPACITY;
     drawOverview(ctx, b, t, lod, s.store.selected.has(b.card.id));
     ctx.restore();
     return;
   }
   ctx.save();
-  if (s.store.dimmed.has(b.card.id)) ctx.globalAlpha = DIMMED_OPACITY; // filtered out
+  if (faded(s, b.card.id)) ctx.globalAlpha = DIMMED_OPACITY; // filtered out, or unlit
   ctx.translate(b.x, b.y);
   const path = roundRect(0, 0, b.w, b.h, CORNER);
   const hover = s.hover.card === b.card.id ? s.hover.part : undefined;
@@ -230,6 +259,9 @@ function drawCard(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, displ
     stroke = t.dark ? lighter(color, 130) : darker(color, 115);
     width = 2.5;
     dashed = true;
+  } else if (s.store.highlight && s.store.lit.has(b.card.id)) {
+    stroke = t.highlight;
+    width = s.store.highlight.focus === b.card.id ? 3.5 : 2.5;
   } else if (b.isGroup) {
     stroke = withAlpha(color, 170);
     width = 1.5;
@@ -332,6 +364,18 @@ function drawHeader(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, dis
     drawCentred(ctx, m, { x: left, y: 0, w, h: HEADER_HEIGHT }, mark, "title");
     left += w;
   }
+  const badge = s.store.threadNumber(b.card.id);
+  if (badge) { // its number in the character thread showing
+    const d = BADGE_SIZE;
+    const cx = left - 3 + d / 2;
+    ctx.fillStyle = fg;
+    ctx.beginPath();
+    ctx.arc(cx, HEADER_HEIGHT / 2, d / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = color;
+    drawCentred(ctx, m, { x: left - 3, y: (HEADER_HEIGHT - d) / 2, w: d, h: d }, String(badge), "label", "center");
+    left = left - 3 + d + 6;
+  }
   const title = elide(m, b.card.title || "Untitled", "title", right - left);
   ctx.fillStyle = fg;
   drawCentred(ctx, m, { x: left, y: 0, w: right - left, h: HEADER_HEIGHT }, title, "title");
@@ -392,9 +436,11 @@ function tracePath(ctx: CanvasRenderingContext2D, a: ArrowShape): void {
 
 function drawArrow(ctx: CanvasRenderingContext2D, a: ArrowShape, s: DrawState, lod: number): void {
   const selected = s.store.selectedArrows.has(a.conn.id);
-  const faded = s.store.dimmed.has(a.conn.source) || s.store.dimmed.has(a.conn.target);
+  const h = s.store.highlight;
+  const unlit = h !== null && !h.arrows.has(a.conn.id);
+  const fade = s.store.dimmed.has(a.conn.source) || s.store.dimmed.has(a.conn.target) || unlit;
   ctx.save();
-  if (faded) ctx.globalAlpha = DIMMED_OPACITY;
+  if (fade) ctx.globalAlpha = DIMMED_OPACITY;
   try {
     drawArrowShape(ctx, a, s, lod, selected);
   } finally {
@@ -404,7 +450,8 @@ function drawArrow(ctx: CanvasRenderingContext2D, a: ArrowShape, s: DrawState, l
 
 function drawArrowShape(ctx: CanvasRenderingContext2D, a: ArrowShape, s: DrawState, lod: number, selected: boolean): void {
   const t = s.theme;
-  const color = selected ? t.selected : arrowColor(a, t, s.hover.arrow === a.conn.id);
+  const lit = s.store.highlight?.arrows.has(a.conn.id) ?? false;
+  const color = selected ? t.selected : lit ? t.highlight : arrowColor(a, t, s.hover.arrow === a.conn.id);
   if (lod < LOD_OVERVIEW) { // far zoomed out: a plain 1px line
     tracePath(ctx, a);
     ctx.strokeStyle = color;
@@ -412,7 +459,7 @@ function drawArrowShape(ctx: CanvasRenderingContext2D, a: ArrowShape, s: DrawSta
     ctx.stroke();
     return;
   }
-  const width = selected ? 3 : 2.2;
+  const width = selected || lit ? 3 : 2.2;
   tracePath(ctx, a);
   ctx.strokeStyle = color;
   ctx.lineWidth = width;

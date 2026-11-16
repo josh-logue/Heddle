@@ -1,11 +1,12 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
-  ARRANGE_WRAP_MAX, ARROW_STYLES, BUILTIN_STATUSES, CARD_COLORS, COLOR_NAMES, cleanList,
+  ARRANGE_WRAP_MAX, ARROW_STYLES, CARD_COLORS, COLOR_NAMES,
   type ArrowStyle, type CardData, type CardKind, type ConnectionData,
 } from "../core/model.ts";
 import { casefold } from "../core/pystr.ts";
 import type { BoardStore } from "../board/store.ts";
 import { Dialog } from "./Dialog.tsx";
+import { useDetailFields } from "./DetailFields.tsx";
 
 /** The cards in a group, as a searchable list of checkboxes (desktop: MemberList). */
 function MemberList({ candidates, checked, onChange }: {
@@ -87,12 +88,7 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description);
   const [color, setColor] = useState(card.color);
-  const [tags, setTags] = useState(card.tags);
-  const [characters, setCharacters] = useState(card.characters);
-  const [pov, setPov] = useState(card.pov);
-  const [locations, setLocations] = useState(card.locations);
-  const [status, setStatus] = useState(card.status);
-  const [notes, setNotes] = useState(card.notes);
+  const details = useDetailFields(store, card, "card");
   const [outside, setOutside] = useState(card.outside_story);
   const [strandKind, setStrandKind] = useState(card.strand_kind || "characters");
   const [strand, setStrand] = useState(card.strand);
@@ -104,20 +100,11 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
   const [vertical, setVertical] = useState(card.arrange_vertical);
   const [grid, setGrid] = useState(card.arrange_grid);
   const [wrap, setWrap] = useState(card.arrange_wrap);
-  const pending = useRef<Record<string, string>>({}).current;
   const suggest = (f: "tags" | "characters" | "locations" | "status") => store.allValues(f);
-  const statuses = [...BUILTIN_STATUSES, ...suggest("status").filter((s) => !BUILTIN_STATUSES.some((b) => casefold(b) === casefold(s)))];
-  const povChoices = [...characters, ...suggest("characters").filter((c) => !characters.some((x) => casefold(x) === casefold(c)))];
 
   const ok = (arrange = false) => {
-    // Anything still typed in a chip box is added, as pressing OK does on the desktop.
-    const withPending = (values: string[], key: string) => cleanList([...values, pending[key] ?? ""]);
-    const chars = withPending(characters, "characters");
     const data: Partial<CardData> = {
-      kind, title, description, color, tags: withPending(tags, "tags"), characters: chars,
-      // Removing the POV character's chip clears the POV.
-      pov: pov && !chars.some((c) => casefold(c) === casefold(pov)) && characters.some((c) => casefold(c) === casefold(pov)) ? "" : pov,
-      locations: withPending(locations, "locations"), status, notes, outside_story: outside,
+      kind, title, description, color, ...details.values(), outside_story: outside,
       strand_kind: kind === "strand" ? strandKind : "", strand: kind === "strand" ? strand : "",
     };
     if (kind === "group") Object.assign(data, { arrange_by_color: byColor, arrange_vertical: vertical, arrange_grid: grid, arrange_wrap: wrap });
@@ -162,8 +149,8 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
             <label htmlFor="card-title">Title</label>
             <input id="card-title" type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
-          <TokenInput label="Tags" values={tags} onChange={setTags} suggestions={suggest("tags")} noun="tag"
-                      placeholder="Type a tag (e.g. Act 1, Subplot B) and press Enter" onPending={(t) => (pending.tags = t)} />
+          <TokenInput label="Tags" values={details.tags} onChange={details.setTags} suggestions={suggest("tags")} noun="tag"
+                      placeholder="Type a tag (e.g. Act 1, Subplot B) and press Enter" onPending={(t) => details.setPending("tags", t)} />
         </>
       )}
       <div className="field">
@@ -217,26 +204,7 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
       {kind !== "strand" && (
         <fieldset className="details">
           <legend>Details (hidden on the card until you click its ▸)</legend>
-          <TokenInput label="Characters" values={characters} onChange={setCharacters} suggestions={suggest("characters")}
-                      noun="character" onPending={(t) => (pending.characters = t)} />
-          <div className="field">
-            <label htmlFor="card-pov">POV</label>
-            <input id="card-pov" type="text" list="pov-choices" value={pov} placeholder="Whose point of view? (optional)"
-                   title="The point-of-view character. They're added to Characters if they aren't there already."
-                   onChange={(e) => setPov(e.target.value)} />
-            <datalist id="pov-choices">{povChoices.map((c) => <option key={c} value={c} />)}</datalist>
-          </div>
-          <TokenInput label="Locations" values={locations} onChange={setLocations} suggestions={suggest("locations")}
-                      noun="location" onPending={(t) => (pending.locations = t)} />
-          <div className="field">
-            <label htmlFor="card-status">Status</label>
-            <input id="card-status" type="text" list="status-choices" value={status} onChange={(e) => setStatus(e.target.value)} />
-            <datalist id="status-choices">{statuses.map((s) => <option key={s} value={s} />)}</datalist>
-          </div>
-          <div className="field">
-            <label htmlFor="card-notes">Notes</label>
-            <textarea id="card-notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
+          {details.fields}
         </fieldset>
       )}
     </Dialog>

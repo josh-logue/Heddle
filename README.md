@@ -13,9 +13,10 @@ through the story, where characters are introduced, and loose ends.
 or [Hollybank Garden](https://josh-logue.github.io/Heddle/?demo=hollybank-garden) demo board, or
 [open one of your own](https://josh-logue.github.io/Heddle/). The browser version is being built
 (see [Web version](#web-version)): so far it can add, edit, move, connect, group, arrange
-and delete cards, copy and paste, search, filter, replace, list cards, manage strands, undo,
-and save (in place in Chrome and Edge; other browsers download a copy). The story tools are
-still to come. Boards stay on your computer; nothing is uploaded.
+and delete cards, copy and paste, search, filter, replace, list cards, manage strands, use the
+story tools (highlight paths, character threads, Story Checks, Routes, the Path Reader), undo,
+and save (in place in Chrome and Edge; other browsers download a copy). Autosave, backups and
+export are still to come. Boards stay on your computer; nothing is uploaded.
 
 ## Setup
 
@@ -88,6 +89,10 @@ npx playwright install chromium   # once, for the browser tests
 npx playwright test               # browser tests (start their own dev server)
 python fixtures/build_fixtures.py # after changing the Python core
 ```
+
+Most keys are the desktop's. The browser keeps a few for itself, so the web version uses
+**N** to add a card (not Ctrl+Shift+N), **T** for Character thread (not Ctrl+T) and the Fit
+button or Ctrl+0 instead of Ctrl+1.
 
 ## Controls
 
