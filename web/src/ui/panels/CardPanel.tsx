@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BUILTIN_STATUSES, KIND_GROUP, KIND_STRAND, allValues, type CardData } from "../../core/model.ts";
+import { BUILTIN_STATUSES, KIND_GROUP, KIND_STRAND, type CardData } from "../../core/model.ts";
 import { casefold, strip } from "../../core/pystr.ts";
 import type { BoardStore } from "../../board/store.ts";
 import { TokenInput } from "../TokenInput.tsx";
@@ -98,10 +98,9 @@ function CardForm({ store, card, onEditCard }: { store: BoardStore; card: CardDa
     timer.current = window.setTimeout(() => commitRef.current(), COMMIT_DELAY_MS);
   };
 
-  const board = store.board;
   const where = store.titleContext(card.id);
-  const statuses = [...BUILTIN_STATUSES, ...allValues(board, "status").filter((s) => !BUILTIN_STATUSES.some((b) => casefold(b) === casefold(s)))];
-  const povChoices = [...shown.characters, ...allValues(board, "characters").filter((c) => !shown.characters.some((x) => casefold(x) === casefold(c)))];
+  const statuses = [...BUILTIN_STATUSES, ...store.allValues("status").filter((s) => !BUILTIN_STATUSES.some((b) => casefold(b) === casefold(s)))];
+  const povChoices = [...shown.characters, ...store.allValues("characters").filter((c) => !shown.characters.some((x) => casefold(x) === casefold(c)))];
   return (
     <div className="panel card-panel" onBlur={(e) => {
       if (!e.currentTarget.contains(e.relatedTarget as Node)) commit(); // leaving the panel saves
@@ -115,15 +114,15 @@ function CardForm({ store, card, onEditCard }: { store: BoardStore; card: CardDa
             <textarea rows={5} value={shown.description} placeholder="What happens…" onChange={(e) => edit({ description: e.target.value })} />
           </label>
         )}
-        <TokenInput label="Tags" values={shown.tags} onChange={(tags) => edit({ tags })} suggestions={allValues(board, "tags")} noun="tag" />
+        <TokenInput label="Tags" values={shown.tags} onChange={(tags) => edit({ tags })} suggestions={store.allValues("tags")} noun="tag" />
         <TokenInput label="Characters" values={shown.characters} onChange={(characters) => edit({ characters })}
-                    suggestions={allValues(board, "characters")} noun="character" />
+                    suggestions={store.allValues("characters")} noun="character" />
         <label>POV
           <input type="text" list="panel-pov" value={shown.pov} placeholder="Whose point of view? (optional)" onChange={(e) => edit({ pov: e.target.value })} />
           <datalist id="panel-pov">{povChoices.map((c) => <option key={c} value={c} />)}</datalist>
         </label>
         <TokenInput label="Locations" values={shown.locations} onChange={(locations) => edit({ locations })}
-                    suggestions={allValues(board, "locations")} noun="location" />
+                    suggestions={store.allValues("locations")} noun="location" />
         <label>Status
           <input type="text" list="panel-status" value={shown.status} onChange={(e) => edit({ status: e.target.value })} />
           <datalist id="panel-status">{statuses.map((st) => <option key={st} value={st} />)}</datalist>

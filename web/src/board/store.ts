@@ -12,7 +12,9 @@ import { StoryGraph } from "../core/graph.ts";
 import { History, deepEqual } from "../core/history.ts";
 import { V_GAP, arrange, edgeKey, makeNode } from "../core/layout.ts";
 import {
-  CARD_COLORS, KIND_GROUP, applyBulkEdit, boardToJson, cleanDisplay, cloneFragment, copyCard, makeBoard, makeCard, newId,
+  BUILTIN_STATUSES, CARD_COLORS, KIND_GROUP, KIND_STRAND, RENAMABLE_FIELDS, applyFields, boardValues, cleanList,
+  countValues, makeStrandInfo, mergeFields, renameInList, renameValue, strandIsBlank, strandKey, type StrandKind,
+  applyBulkEdit, boardToJson, cleanDisplay, cloneFragment, copyCard, makeBoard, makeCard, newId,
   replaceText, type BulkEdit, type TextField,
   type BoardData, type CardData, type ConnectionData, type Display, type RouteData, type SavedValues,
   type StrandInfo,
@@ -23,6 +25,30 @@ import {
 import { labelTexts, routeArrows, type ArrowShape } from "./routing.ts";
 import { lineHeight, type TextMeasurer } from "./text.ts";
 import { matches as filterMatches, type Extras, type FilterCounts } from "../core/filters.ts";
+import { casefold, strip } from "../core/pystr.ts";
+
+/** Between two descriptions joined when strands merge (renaming one to the other's name). */
+export const MERGED_DESCRIPTIONS = "\n\n———\n\n";
+/** Where "Remove unused" and "Import" list custom palette colours beside the strands. */
+export const COLORS_KEY = "custom_colors";
+
+/** Every strand of a field on a board: on cards, on routes, saved, with details, stood for
+ *  by a strand card, and for statuses the built-in ones (heddle/scene_strands.all_values). */
+export function strandsOf(s: BoardState, field: StrandKind): string[] {
+  const extra: string[] = [...(s.saved_values[field] ?? [])];
+  if (field === "status") extra.push(...BUILTIN_STATUSES);
+  for (const [spelling] of countValues(s.routes, field).values()) extra.push(spelling);
+  for (const info of s.strands) if (info.kind === field) extra.push(info.name);
+  for (const c of s.cards) if (c.kind === KIND_STRAND && c.strand_kind === field) extra.push(c.strand);
+  return boardValues(s.cards, field, extra);
+}
+
+/** {"field\0casefolded": name} for every strand on a board. */
+function strandNames(s: BoardState): Map<string, [StrandKind, string]> {
+  const out = new Map<string, [StrandKind, string]>();
+  for (const f of RENAMABLE_FIELDS) for (const name of strandsOf(s, f)) out.set(strandKey(f, name), [f, name]);
+  return out;
+}
 
 export const GRID = 25;
 export const PUSH_GAP = V_GAP;
@@ -43,6 +69,8 @@ export interface CardEditExtras {
   members?: readonly string[];
   /** For a group: auto-arrange it afterwards ("Save & auto-arrange"). */
   arrange?: boolean;
+  /** Custom colours taken off the board's palette in the editor. */
+  removeColors?: readonly string[];
 }
 
 export interface BoardState {
@@ -125,6 +153,8 @@ export class BoardStore {
   /** During a drag: the frames of the groups around what's moving, held still (the
    *  desktop refits them only when the drag ends, so a card can be dragged out). */
   private frozen = new Map<string, CardBox>();
+  /** Strands a rename or "Remove unused" took off the board: not kept as saved strands. */
+  private letGo = new Set<string>();
   private readonly listeners = new Set<Listener>();
 
   constructor(board: BoardData, private readonly m: TextMeasurer) {
@@ -343,9 +373,29 @@ export class BoardStore {
       this.state = anchored;
       this.refresh();
     }
+    this.state = this.withDroppedStrands(this.state);
     const recorded = this.history.commit(this.state);
     this.notify();
     return recorded;
+  }
+
+  /** Strands belong to the board, not to the cards using them: one an edit left unused
+   *  (taken off its last card, or that card deleted) is kept as a saved strand. Only a
+   *  rename or "Remove unused" takes one off the list. */
+  private withDroppedStrands(next: BoardState): BoardState {
+    const before = this.history.current;
+    const letGo = this.letGo;
+    this.letGo = new Set();
+    if (!before) return next;
+    const now = strandNames(next);
+    const keep: Partial<Record<StrandKind, string[]>> = {};
+    for (const [key, [f, name]] of strandNames(before)) {
+      if (!now.has(key) && !letGo.has(key)) (keep[f] ??= []).push(name);
+    }
+    if (!Object.keys(keep).length) return next;
+    const saved = { ...next.saved_values };
+    for (const [f, names] of Object.entries(keep) as [StrandKind, string[]][]) saved[f] = [...(saved[f] ?? []), ...names];
+    return { ...next, saved_values: saved };
   }
 
   undo(): boolean {
@@ -542,6 +592,10 @@ export class BoardStore {
     }
     if (next.kind === KIND_GROUP && extras.members) this.applyMembers(id, extras.members);
     if (next.kind === KIND_GROUP && extras.arrange) this.arrangeInPlace(id);
+    if (extras.removeColors?.length) {
+      const gone = new Set(extras.removeColors.map((c) => c.toLowerCase()));
+      this.state = { ...this.state, custom_colors: this.state.custom_colors.filter((c) => !gone.has(c.toLowerCase())) };
+    }
     this.commit(); // (a new card kept as it was still needs recording)
   }
 
@@ -946,6 +1000,291 @@ export class BoardStore {
   /** Back to fitting snugly round the cards. */
   fitFrame(id: string): void {
     this.commit(this.replaceCards(new Map([[id, { width: 0, height: 0 }]])));
+  }
+
+  // ----- strands ------------------------------------------------------------------------------
+
+  allValues(field: StrandKind): string[] {
+    return strandsOf(this.state, field);
+  }
+
+  /** A strand's own details, if it has any. */
+  strand(kind: string, name: string): StrandInfo | undefined {
+    const key = strandKey(kind, strip(name));
+    return this.state.strands.find((s) => strandKey(s.kind, s.name) === key);
+  }
+
+  /** {casefolded strand: [cards using it, routes using it]} for one field. */
+  strandUsage(kind: StrandKind): Map<string, [number, number]> {
+    const cards = countValues(this.state.cards, kind);
+    const routes = countValues(this.state.routes, kind);
+    const out = new Map<string, [number, number]>();
+    for (const k of new Set([...cards.keys(), ...routes.keys()])) out.set(k, [cards.get(k)?.[1] ?? 0, routes.get(k)?.[1] ?? 0]);
+    return out;
+  }
+
+  /** {casefolded strand: strand cards standing for it} for one field. */
+  strandCardCounts(kind: StrandKind): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const c of this.state.cards) {
+      if (c.kind === KIND_STRAND && c.strand_kind === kind) out.set(casefold(c.strand), (out.get(casefold(c.strand)) ?? 0) + 1);
+    }
+    return out;
+  }
+
+  /** The cards that have a strand (or, for a strand card, stand for it). */
+  cardsWith(kind: StrandKind, name: string): string[] {
+    const key = casefold(strip(name));
+    return this.state.cards.filter((c) => {
+      if (c.kind === KIND_STRAND) return c.strand_kind === kind && casefold(c.strand) === key;
+      const v = c[kind];
+      return (Array.isArray(v) ? v : [v]).some((x) => casefold(strip(x)) === key);
+    }).map((c) => c.id);
+  }
+
+  /** Store a strand's description, picture and fields (one undo step); blank details
+   *  forget them. False if nothing changed. */
+  setStrandInfo(info: StrandInfo): boolean {
+    if (!info.kind || !info.name) return false;
+    const key = strandKey(info.kind, info.name);
+    const at = this.state.strands.findIndex((s) => strandKey(s.kind, s.name) === key);
+    const before = at >= 0 ? this.state.strands[at]! : undefined;
+    let strands: StrandInfo[];
+    if (strandIsBlank(info)) {
+      if (!before) return false;
+      strands = this.state.strands.filter((_, i) => i !== at);
+    } else {
+      if (before && deepEqual([before.description, before.picture, before.fields], [info.description, info.picture, info.fields])) return false;
+      const kept = { ...info, name: before ? before.name : info.name };
+      strands = before ? this.state.strands.map((s, i) => (i === at ? kept : s)) : [...this.state.strands, kept];
+    }
+    this.commit({ ...this.state, strands });
+    return true;
+  }
+
+  /** Rename a strand on every card, route, saved list, strand card and its details
+   *  (one undo step). Renaming onto an existing strand merges the two. How many cards changed. */
+  renameStrand(field: StrandKind, old: string, newName: string): number {
+    const name = strip(newName);
+    if (!strip(old) || !name) return 0;
+    this.letGo.add(strandKey(field, old)); // the old name isn't kept as a saved strand
+    const copies = this.state.cards.map(copyCard);
+    const changed = new Set(renameValue(copies, field, old, name).map((c) => c.id));
+    const oldKey = casefold(strip(old));
+    let strandCards = 0; // strand cards renamed too
+    const cards = copies.map((c, i) => {
+      if (c.kind === KIND_STRAND && c.strand_kind === field && casefold(c.strand) === oldKey && c.strand !== name) {
+        strandCards++;
+        return makeCard({ ...c, strand: name, title: name });
+      }
+      return changed.has(c.id) ? makeCard({ ...c }) : this.state.cards[i]!;
+    });
+    const routes = this.state.routes.map((r) => ({ ...r, tags: [...r.tags], characters: [...r.characters], locations: [...r.locations] }));
+    renameValue(routes as unknown as CardData[], field, old, name);
+    const saved = { ...this.state.saved_values };
+    if (saved[field]) saved[field] = renameInList(saved[field]!, old, name);
+    this.commit({ ...this.state, cards, routes, saved_values: saved, strands: this.renamedDetails(field, old, name) });
+    return changed.size + strandCards;
+  }
+
+  /** Carry a strand's details over to its new name; onto a strand with details of its own,
+   *  merge them: both descriptions (the target's first), the target's picture (or the
+   *  renamed one's), and the fields (the target's values kept). */
+  private renamedDetails(kind: StrandKind, old: string, name: string): StrandInfo[] {
+    const oldKey = strandKey(kind, old);
+    const newKey = strandKey(kind, name);
+    const moving = this.state.strands.find((s) => strandKey(s.kind, s.name) === oldKey);
+    if (!moving) return [...this.state.strands];
+    const rest = this.state.strands.filter((s) => s !== moving);
+    const target = newKey !== oldKey ? rest.find((s) => strandKey(s.kind, s.name) === newKey) : undefined;
+    if (!target) return [...rest, { ...moving, name }];
+    const texts = [strip(target.description), strip(moving.description)].filter(Boolean);
+    const merged: StrandInfo = {
+      ...target, name, description: texts.join(MERGED_DESCRIPTIONS), picture: target.picture || moving.picture,
+      fields: mergeFields(target.fields, moving.fields),
+    };
+    return rest.map((s) => (s === target ? merged : s));
+  }
+
+  /** Copy `source`'s field names (only `names`, if given) to `targets` of the same kind:
+   *  one undo step. Returns [strands changed, fields added]. */
+  applyStrandFields(kind: StrandKind, source: string, targets: Iterable<string>, names: Iterable<string> | null = null,
+                    withValues = false): [number, number] {
+    const info = this.strand(kind, source);
+    if (!info?.fields.length) return [0, 0];
+    const spelling = new Map(this.allValues(kind).map((v) => [casefold(v), v]));
+    let strands = [...this.state.strands];
+    let changed = 0;
+    let added = 0;
+    for (const t of new Set([...targets].map((x) => casefold(strip(x))))) {
+      if (t === casefold(info.name) || !spelling.has(t)) continue;
+      const at = strands.findIndex((x) => strandKey(x.kind, x.name) === strandKey(kind, t));
+      const old = at >= 0 ? strands[at]! : makeStrandInfo({ kind, name: spelling.get(t)! });
+      const fields = applyFields(info.fields, old.fields, names === null ? null : [...names], withValues);
+      if (deepEqual(fields, old.fields)) continue;
+      const next = { ...old, fields };
+      strands = at >= 0 ? strands.map((x, i) => (i === at ? next : x)) : [...strands, next];
+      changed++;
+      added += fields.length - old.fields.length;
+    }
+    if (changed) this.commit({ ...this.state, strands });
+    return [changed, added];
+  }
+
+  /** Strands nothing uses (no card, route or strand card), per field: [those without
+   *  details (saved ones only), those with a description, picture or fields]. */
+  unusedStrands(): [Partial<Record<StrandKind, string[]>>, Partial<Record<StrandKind, string[]>>] {
+    const plain: Partial<Record<StrandKind, string[]>> = {};
+    const detailed: Partial<Record<StrandKind, string[]>> = {};
+    for (const f of RENAMABLE_FIELDS) {
+      const used = new Set([...this.strandUsage(f).keys(), ...this.strandCardCounts(f).keys()]);
+      if (f === "status") for (const b of BUILTIN_STATUSES) used.add(casefold(b)); // built in: never unused
+      const saved = new Set((this.state.saved_values[f] ?? []).map(casefold));
+      for (const name of this.allValues(f)) {
+        const key = casefold(name);
+        if (used.has(key)) continue;
+        if (this.strand(f, name)) (detailed[f] ??= []).push(name);
+        else if (saved.has(key)) (plain[f] ??= []).push(name);
+      }
+    }
+    return [plain, detailed];
+  }
+
+  /** How many cards and arrows use each colour, not counting the card `exclude`. */
+  colorUsage(exclude: string | null = null): Map<string, number> {
+    const counts = new Map<string, number>();
+    const add = (c: string) => counts.set(c.toLowerCase(), (counts.get(c.toLowerCase()) ?? 0) + 1);
+    for (const c of this.state.cards) if (c.id !== exclude) add(c.color);
+    for (const e of this.state.connections) if (e.color) add(e.color);
+    return counts;
+  }
+
+  /** Saved strands nothing uses, per field, plus custom colours nothing uses (under
+   *  COLORS_KEY). Strands with details only with `withDetails`. */
+  unusedSaved(withDetails = false): Record<string, string[]> {
+    const [plain, detailed] = this.unusedStrands();
+    const out: Record<string, string[]> = { ...plain } as Record<string, string[]>;
+    if (withDetails) for (const [f, names] of Object.entries(detailed)) out[f] = [...(out[f] ?? []), ...names!];
+    const used = this.colorUsage();
+    const spare = this.state.custom_colors.filter((c) => !used.has(c.toLowerCase()));
+    if (spare.length) out[COLORS_KEY] = spare;
+    return out;
+  }
+
+  /** Remove saved strands (their details too) and, under COLORS_KEY, custom colours:
+   *  one undo step. How many went. */
+  removeSaved(values: Record<string, string[]>): number {
+    let removed = 0;
+    const colors = new Set((values[COLORS_KEY] ?? []).map((c) => c.toLowerCase()));
+    const custom = this.state.custom_colors.filter((c) => !colors.has(c.toLowerCase()));
+    removed += this.state.custom_colors.length - custom.length;
+    const saved = { ...this.state.saved_values };
+    let strands = [...this.state.strands];
+    for (const [f, gone] of Object.entries(values) as [StrandKind, string[]][]) {
+      if (!(RENAMABLE_FIELDS as readonly string[]).includes(f)) continue;
+      const keys = new Set(gone.map((v) => casefold(v)));
+      const before = saved[f] ?? [];
+      const after = before.filter((v) => !keys.has(casefold(v)));
+      const goneKeys = new Set(before.filter((v) => keys.has(casefold(v))).map(casefold));
+      strands = strands.filter((x) => {
+        if (x.kind === f && keys.has(casefold(x.name))) {
+          goneKeys.add(casefold(x.name));
+          return false;
+        }
+        return true;
+      });
+      removed += goneKeys.size;
+      for (const k of goneKeys) this.letGo.add(`${f}\u0000${k}`);
+      if (after.length) saved[f] = after;
+      else delete saved[f];
+    }
+    if (removed) this.commit({ ...this.state, custom_colors: custom, saved_values: saved, strands });
+    return removed;
+  }
+
+  /** Add strands (and custom colours) without making cards, with their details from
+   *  `details`. Strands the board already has are skipped. How many were added. */
+  importStrands(values: Record<string, string[]>, colors: readonly string[] = [], details: readonly StrandInfo[] = []): number {
+    let added = 0;
+    const saved = { ...this.state.saved_values };
+    const strands = [...this.state.strands];
+    const info = new Map(details.map((d) => [strandKey(d.kind, d.name), d]));
+    for (const [f, fresh0] of Object.entries(values) as [StrandKind, string[]][]) {
+      if (!(RENAMABLE_FIELDS as readonly string[]).includes(f)) continue;
+      const have = new Set(this.allValues(f).map(casefold));
+      const fresh = cleanList(fresh0).filter((v) => !have.has(casefold(v)));
+      if (!fresh.length) continue;
+      saved[f] = [...(saved[f] ?? []), ...fresh];
+      added += fresh.length;
+      for (const v of fresh) {
+        const d = info.get(strandKey(f, v));
+        if (d && !strandIsBlank(d)) strands.push({ ...d, name: v });
+      }
+    }
+    const presets = new Set<string>(CARD_COLORS);
+    const custom = [...this.state.custom_colors];
+    for (const raw of colors) {
+      const c = strip(raw).toLowerCase();
+      if (c && !presets.has(c) && !custom.includes(c)) {
+        custom.push(c);
+        added++;
+      }
+    }
+    if (added) this.commit({ ...this.state, saved_values: saved, strands, custom_colors: custom });
+    return added;
+  }
+
+  /** What dropping a strand at (x, y) would do: ["card", id] adds it to a standard card,
+   *  ["group", id] puts a strand card in a group, ["new", null] on the blank board; null:
+   *  refused (over a strand card, whose strand is fixed). */
+  strandDropTarget(x: number, y: number): ["card" | "group" | "new", string | null] | null {
+    let card: CardBox | null = null;
+    for (const b of this.boxes.values()) {
+      if (!b.visible || b.isGroup) continue;
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) card = b; // the last drawn is on top
+    }
+    if (card) return card.isStrand ? null : ["card", card.card.id];
+    const group = this.groupAt(x, y);
+    return group ? ["group", group] : ["new", null];
+  }
+
+  /** Drop a strand at (x, y), as one undo step: on a standard card it joins the card's
+   *  tags, characters or locations (a status replaces the card's); on a group or the blank
+   *  board it becomes a strand card there. Returns [changed, a notice to show or ""]. */
+  dropStrand(kind: StrandKind, name0: string, x: number, y: number, snap = false): [boolean, string] {
+    const name = strip(name0);
+    const target = this.strandDropTarget(x, y);
+    if (!name || !target) return [false, ""];
+    const [what, id] = target;
+    if (what !== "card") {
+      this.addStrandCard(kind, name, x, y, snap, id ?? undefined);
+      return [true, ""];
+    }
+    const card = this.card(id!)!;
+    const title = card.title || "Untitled";
+    if (kind === "status") {
+      const old = card.status;
+      if (casefold(old) === casefold(name)) return [false, `“${title}” already has the status ${old}`];
+      this.updateCard(card.id, { status: name });
+      return [true, old ? `“${title}”: status ${old} → ${name}` : ""];
+    }
+    if (card[kind].some((v) => casefold(v) === casefold(name))) return [false, `“${title}” already has ${name}`];
+    this.updateCard(card.id, { [kind]: [...card[kind], name] });
+    return [true, ""];
+  }
+
+  /** A card standing for a strand, centred on (x, y), in `group` if given: one undo step. */
+  addStrandCard(kind: StrandKind, name: string, x: number, y: number, snap = false, group?: string): CardData {
+    let [cx, cy] = [x - CARD_WIDTH / 2, y - 20];
+    if (snap) [cx, cy] = [snapped(cx), snapped(cy)];
+    const card = makeCard({
+      kind: KIND_STRAND, strand_kind: kind, strand: name, x: cx, y: cy, parent: group ?? "",
+      color: CARD_COLORS[this.state.cards.length % CARD_COLORS.length]!,
+    });
+    this.selected = new Set([card.id]);
+    this.selectedArrows.clear();
+    this.commit({ ...this.state, cards: [...this.state.cards, card] });
+    return card;
   }
 
   // ----- copy, cut, paste, duplicate ---------------------------------------------------

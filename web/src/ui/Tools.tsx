@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { searchCards } from "../core/filters.ts";
 import {
   BUILTIN_STATUSES, BULK_LIST_FIELDS, CARD_COLORS, COLOR_NAMES, DISPLAY_DEFAULTS, KIND_GROUP, KIND_STRAND,
-  REPLACE_FIELDS, allValues, boardValues, countReplacements, strandKey, titleLabels, type Display, type TextField,
+  REPLACE_FIELDS, boardValues, countReplacements, strandKey, titleLabels, type Display, type TextField,
 } from "../core/model.ts";
 import { casefold, collapseSpaces, sortedBy } from "../core/pystr.ts";
 import { naturalKey, rank } from "../core/rank.ts";
@@ -140,7 +140,7 @@ export function Replace({ store, onDone, onClose }: { store: BoardStore; onDone:
       <p className="muted" role="status">
         {!find ? "" : total ? `${total} match${total !== 1 ? "es" : ""} in ${touched} card${touched !== 1 ? "s" : ""} (one undo step)` : "No matches"}
       </p>
-      <p className="muted small-note">To rename a tag, character, location or status everywhere, use Rename Strand (coming with the Strands panel).</p>
+      <p className="muted small-note">To rename a tag, character, location or status everywhere, use Edit → Rename strand… (Ctrl+R).</p>
     </Dialog>
   );
 }
@@ -155,14 +155,13 @@ const SINGULAR: Record<string, string> = { tags: "tag", characters: "character",
 export function MultiEdit({ store, onDone, onClose }: { store: BoardStore; onDone: (changed: number) => void; onClose: () => void }) {
   const ids = [...store.selected];
   const cards = store.state.cards.filter((c) => ids.includes(c.id));
-  const board = store.board;
   const [color, setColor] = useState<string | null>(null);
   const [add, setAdd] = useState<Record<string, string[]>>({ tags: [], characters: [], locations: [] });
   const [remove, setRemove] = useState<Record<string, string[]>>({ tags: [], characters: [], locations: [] });
   const [status, setStatus] = useState(KEEP);
   const pending = useRef<Record<string, string>>({}).current;
   const colours = [...CARD_COLORS, ...store.state.custom_colors.filter((c) => !(CARD_COLORS as readonly string[]).includes(c))];
-  const statuses = [...BUILTIN_STATUSES, ...allValues(board, "status").filter((s) => !BUILTIN_STATUSES.some((b) => casefold(b) === casefold(s)))];
+  const statuses = [...BUILTIN_STATUSES, ...store.allValues("status").filter((s) => !BUILTIN_STATUSES.some((b) => casefold(b) === casefold(s)))];
   const ok = () => {
     const withPending = (values: string[], key: string) => (pending[key]?.trim() ? [...values, pending[key]!] : values);
     const edit = {
@@ -187,7 +186,7 @@ export function MultiEdit({ store, onDone, onClose }: { store: BoardStore; onDon
       </div>
       {BULK_LIST_FIELDS.map((f) => (
         <div key={f}>
-          <TokenInput label={`Add ${f}`} values={add[f]!} onChange={(v) => setAdd({ ...add, [f]: v })} suggestions={allValues(board, f)}
+          <TokenInput label={`Add ${f}`} values={add[f]!} onChange={(v) => setAdd({ ...add, [f]: v })} suggestions={store.allValues(f)}
                       noun={SINGULAR[f]!} placeholder={`${f[0]!.toUpperCase()}${f.slice(1)} to add to every card`}
                       onPending={(t) => (pending[`add-${f}`] = t)} />
           <TokenInput label={`Remove ${f}`} values={remove[f]!} onChange={(v) => setRemove({ ...remove, [f]: v })}

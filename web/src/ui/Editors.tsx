@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import {
-  ARRANGE_WRAP_MAX, ARROW_STYLES, BUILTIN_STATUSES, CARD_COLORS, COLOR_NAMES, allValues, cleanList,
+  ARRANGE_WRAP_MAX, ARROW_STYLES, BUILTIN_STATUSES, CARD_COLORS, COLOR_NAMES, cleanList,
   type ArrowStyle, type CardData, type CardKind, type ConnectionData,
 } from "../core/model.ts";
 import { casefold } from "../core/pystr.ts";
@@ -39,8 +39,10 @@ import { TokenInput } from "./TokenInput.tsx";
 
 const STRAND_KINDS = [["characters", "Character"], ["locations", "Location"], ["tags", "Tag"], ["status", "Status"]] as const;
 
-function Swatches({ value, onChange, custom, allowNone }: {
+function Swatches({ value, onChange, custom, allowNone, onRemove }: {
   value: string | null; onChange: (c: string) => void; custom: readonly string[]; allowNone?: boolean;
+  /** Custom colours that can be taken off the palette (nothing else uses them). */
+  onRemove?: { removable: (c: string) => boolean; remove: (c: string) => void };
 }) {
   const colors = [...CARD_COLORS, ...custom.filter((c) => !(CARD_COLORS as readonly string[]).includes(c))];
   const own = value !== null && value !== "" && !colors.includes(value);
@@ -51,9 +53,15 @@ function Swatches({ value, onChange, custom, allowNone }: {
                 title="The theme's arrow colour" onClick={() => onChange("")}>∅</button>
       )}
       {[...colors, ...(own ? [value!] : [])].map((c) => (
-        <button key={c} type="button" role="radio" aria-checked={c === value} className="swatch"
-                style={{ background: c }} title={COLOR_NAMES.get(c) ?? c} aria-label={COLOR_NAMES.get(c) ?? c}
-                onClick={() => onChange(c)} />
+        <span key={c} className="swatch-wrap">
+          <button type="button" role="radio" aria-checked={c === value} className="swatch"
+                  style={{ background: c }} title={COLOR_NAMES.get(c) ?? c} aria-label={COLOR_NAMES.get(c) ?? c}
+                  onClick={() => onChange(c)} />
+          {onRemove?.removable(c) && (
+            <button type="button" className="swatch-remove" title={`Take ${c} off this board's palette`}
+                    aria-label={`Remove colour ${c}`} onClick={() => onRemove.remove(c)}>×</button>
+          )}
+        </span>
       ))}
       <label className="swatch custom" title="Custom colour…">
         +
@@ -88,6 +96,8 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
   const [outside, setOutside] = useState(card.outside_story);
   const [strandKind, setStrandKind] = useState(card.strand_kind || "characters");
   const [strand, setStrand] = useState(card.strand);
+  const [palette, setPalette] = useState(store.state.custom_colors);
+  const usage = useState(() => store.colorUsage(id))[0]; // how many other cards and arrows use each colour
   const candidates = useState(() => store.memberCandidates(id))[0];
   const [members, setMembers] = useState(() => new Set(candidates.filter(([, , m]) => m).map(([cid]) => cid)));
   const [byColor, setByColor] = useState(card.arrange_by_color);
@@ -95,8 +105,7 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
   const [grid, setGrid] = useState(card.arrange_grid);
   const [wrap, setWrap] = useState(card.arrange_wrap);
   const pending = useRef<Record<string, string>>({}).current;
-  const board = store.board;
-  const suggest = (f: "tags" | "characters" | "locations" | "status") => allValues(board, f);
+  const suggest = (f: "tags" | "characters" | "locations" | "status") => store.allValues(f);
   const statuses = [...BUILTIN_STATUSES, ...suggest("status").filter((s) => !BUILTIN_STATUSES.some((b) => casefold(b) === casefold(s)))];
   const povChoices = [...characters, ...suggest("characters").filter((c) => !characters.some((x) => casefold(x) === casefold(c)))];
 
@@ -112,7 +121,8 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
       strand_kind: kind === "strand" ? strandKind : "", strand: kind === "strand" ? strand : "",
     };
     if (kind === "group") Object.assign(data, { arrange_by_color: byColor, arrange_vertical: vertical, arrange_grid: grid, arrange_wrap: wrap });
-    store.updateCard(id, data, kind === "group" ? { members: [...members], arrange } : {});
+    const removeColors = store.state.custom_colors.filter((c) => !palette.includes(c));
+    store.updateCard(id, data, { ...(kind === "group" ? { members: [...members], arrange } : {}), removeColors });
     onClose();
   };
   const cancel = () => {
@@ -158,7 +168,13 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
       )}
       <div className="field">
         <span className="label">Color</span>
-        <Swatches value={color} onChange={setColor} custom={store.state.custom_colors} />
+        <Swatches value={color} onChange={setColor} custom={palette} onRemove={{
+          removable: (c) => palette.includes(c) && !usage.get(c.toLowerCase()),
+          remove: (c) => {
+            setPalette(palette.filter((x) => x !== c));
+            if (color === c) setColor(card.color === c ? CARD_COLORS[0] : card.color);
+          },
+        }} />
       </div>
       {kind === "card" && (
         <div className="field">

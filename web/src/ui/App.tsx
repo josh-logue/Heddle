@@ -16,6 +16,12 @@ import { CardPanel } from "./panels/CardPanel.tsx";
 import { FilterPanel, loadMatchAll, matchNote } from "./panels/FilterPanel.tsx";
 import { SearchBar } from "./SearchBar.tsx";
 import { BoardOptions, GoToCard, MultiEdit, Replace, strandInfoMap } from "./Tools.tsx";
+import { CardListPanel } from "./panels/CardListPanel.tsx";
+import { StrandsPanel, KIND_ONE, KIND_LABELS } from "./panels/StrandsPanel.tsx";
+import { ApplyFields, RenameStrand, StrandChecklist } from "./StrandDialogs.tsx";
+import { RENAMABLE_FIELDS, type StrandKind } from "../core/model.ts";
+import { casefold } from "../core/pystr.ts";
+import { COLORS_KEY, strandsOf, stateFromBoard } from "../board/store.ts";
 import { BoardView } from "./BoardView.tsx";
 import { DEMOS, demoById, type Demo } from "./demos.ts";
 import { Confirm } from "./Dialog.tsx";
@@ -50,12 +56,18 @@ type Modal =
   | { kind: "arrows"; ids: string[] }
   | { kind: "confirm"; message: string; okLabel: string; resolve: (yes: boolean) => void }
   | { kind: "menu"; items: MenuItem[]; x: number; y: number }
-  | { kind: "goto" } | { kind: "replace" } | { kind: "multi" } | { kind: "options" };
+  | { kind: "goto" } | { kind: "replace" } | { kind: "multi" } | { kind: "options" }
+  | { kind: "rename"; strandKind: StrandKind; value: string }
+  | { kind: "checklist"; title: string; intro: string; values: Record<string, string[]>; okLabel: string;
+      extra?: Record<string, string[]>; extraLabel?: string; onOk: (chosen: Record<string, string[]>) => void }
+  | { kind: "applyFields"; strandKind: StrandKind; source: string };
 
 /** The side panels, their keys, and where each one opens by default. */
 const PANELS: { id: string; title: string; keys: string; tip: string }[] = [
   { id: "card", title: "Card", keys: "Ctrl+Shift+E", tip: "Edit the selected card's title, description and details beside the board" },
   { id: "filter", title: "Filter", keys: "Ctrl+L", tip: "Fade out the cards that don't have the tags, characters, colours… you tick" },
+  { id: "cardList", title: "Card List", keys: "Ctrl+Shift+L", tip: "Every card on the board, group by group in story order: click one to find it" },
+  { id: "strands", title: "Strands", keys: "Ctrl+Shift+B", tip: "Every strand on the board, where it's used, and its description and fields" },
 ];
 
 interface PanelLayout {
@@ -365,6 +377,78 @@ export function App() {
   const matchList = searchMatches();
   const searchIndex = searchAt ? matchList.findIndex(([id]) => id === searchAt) + 1 : 0;
 
+  // ----- strands ------------------------------------------------------------------------------
+  const renameStrand = useCallback((strandKind: StrandKind = "tags", value = "") => setModal({ kind: "rename", strandKind, value }), []);
+
+  const removeUnused = useCallback(() => {
+    if (!store) return;
+    const unused = store.unusedSaved();
+    const detailed = store.unusedStrands()[1] as Record<string, string[]>;
+    const n = Object.values(detailed).reduce((t, v) => t + v.length, 0);
+    if (!Object.keys(unused).length && !n) {
+      setNotice("There are no strands or custom colors that nothing on the board uses.");
+      return;
+    }
+    setModal({
+      kind: "checklist", title: "Remove unused strands", okLabel: "Remove", values: unused, extra: detailed,
+      intro: "Nothing on the board uses these strands or custom colors. Checked ones will be removed from this board's strands and palette.",
+      extraLabel: `Also list unused strands with a description, picture or fields (${n})`,
+      onOk: (chosen) => {
+        const removed = store.removeSaved(chosen);
+        setNotice(`Removed ${removed} unused strand${removed !== 1 ? "s" : ""} or color${removed !== 1 ? "s" : ""}`);
+      },
+    });
+  }, [store]);
+
+  /** Offer the strands (and custom colours) in another board file that this one lacks. */
+  const importStrands = useCallback(async () => {
+    if (!store) return;
+    let opened: OpenedBoard | null;
+    try {
+      opened = await pickBoard();
+    } catch (e) {
+      setError(e instanceof BoardFileError ? e.message : `Couldn't read the board: ${String(e)}`);
+      return;
+    }
+    if (!opened) return;
+    const source = stateFromBoard(opened.board);
+    const fresh: Record<string, string[]> = {};
+    for (const f of RENAMABLE_FIELDS) {
+      const have = new Set(store.allValues(f).map(casefold));
+      const add = strandsOf(source, f).filter((v) => !have.has(casefold(v)));
+      if (add.length) fresh[f] = add;
+    }
+    const colors = source.custom_colors.filter((c) => !store.state.custom_colors.includes(c));
+    if (colors.length) fresh[COLORS_KEY] = colors;
+    if (!Object.keys(fresh).length) {
+      setNotice(`“${opened.name}” has no strands or custom colors this board doesn't already have.`);
+      return;
+    }
+    const name = opened.name;
+    setModal({
+      kind: "checklist", title: "Import strands", okLabel: "Import", values: fresh,
+      intro: `Strands and custom colors from “${name}” that this board doesn't have yet. Checked ones are added to this board's strands; no cards are copied.`,
+      onOk: (chosen) => {
+        const { [COLORS_KEY]: chosenColors = [], ...strands } = chosen;
+        const added = store.importStrands(strands, chosenColors, source.strands);
+        setNotice(`Imported ${added} strand${added !== 1 ? "s" : ""} or color${added !== 1 ? "s" : ""} from “${name}”`);
+      },
+    });
+  }, [store]);
+
+  /** Cards picked in the Card List: select them and bring them into view. A card folded in a
+   *  collapsed group selects that group, unless `unfold`, which opens it and hands the
+   *  keyboard to the board. */
+  const showListed = useCallback((ids: string[], unfold: boolean) => {
+    if (!store || !canvas) return;
+    if (unfold) store.reveal(ids);
+    const targets = [...new Set(ids.map((id) => (unfold ? id : store.structure.visibleEnd(id))))];
+    store.select(targets);
+    const b = store.boxes.get(targets[0]!);
+    if (b) canvas.reveal(b.card.id);
+    if (unfold) requestAnimationFrame(() => canvas.canvas.focus({ preventScroll: true }));
+  }, [store, canvas]);
+
   const focusCanvas = useCallback(() => requestAnimationFrame(() => canvas?.canvas.focus({ preventScroll: true })), [canvas]);
 
   // App-wide keys (the canvas handles its own while it has focus).
@@ -401,6 +485,15 @@ export function App() {
       } else if (ctrl && e.shiftKey && e.code === "KeyE" && store) {
         e.preventDefault();
         showPanel("card");
+      } else if (ctrl && e.shiftKey && e.code === "KeyL" && store) {
+        e.preventDefault();
+        showPanel("cardList");
+      } else if (ctrl && e.shiftKey && e.code === "KeyB" && store) {
+        e.preventDefault();
+        showPanel("strands");
+      } else if (ctrl && !e.shiftKey && e.code === "KeyR" && store) {
+        e.preventDefault(); // (the browser's reload key)
+        renameStrand();
       } else if (typing(e)) {
         return;
       } else if (ctrl && !e.shiftKey && e.code === "KeyZ") {
@@ -423,7 +516,7 @@ export function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [canvas, modal, save, open, undo, redo, toggleAllDetails, toggleAllCollapsed, store, searchStep, showPanel]);
+  }, [canvas, modal, save, open, undo, redo, toggleAllDetails, toggleAllCollapsed, store, searchStep, showPanel, renameStrand]);
 
   const host = useMemo<CanvasHost>(() => ({
     editCard: (id, isNew) => setModal({ kind: "card", id, isNew }),
@@ -475,6 +568,20 @@ export function App() {
       <CardPanel store={store} onEditCard={(id) => setModal({ kind: "card", id, isNew: false })} onEditSeveral={() => setModal({ kind: "multi" })} />
     ) },
     filter: { id: "filter", title: "Filter", render: () => <FilterPanel store={store} /> },
+    cardList: { id: "cardList", title: "Card List", render: () => <CardListPanel store={store} onShow={showListed} /> },
+    strands: { id: "strands", title: "Strands", render: () => (
+      <StrandsPanel store={store} act={{
+        rename: (k, v) => renameStrand(k, v),
+        removeUnused,
+        applyFields: (k, v) => setModal({ kind: "applyFields", strandKind: k, source: v }),
+        selectCards: (ids) => showListed(ids, false),
+        addToBoard: (k, v) => {
+          if (!canvas) return;
+          const [x, y] = canvas.camera.toScene(canvas.camera.width / 2, canvas.camera.height / 2);
+          store.addStrandCard(k, v, x, y, snap);
+        },
+      }} />
+    ) },
   } : {};
   const sidebar = (side: Side) => {
     const panels = layout.open.filter((id) => panelDefs[id] && panelSide(id) === side).map((id) => panelDefs[id]!);
@@ -508,6 +615,7 @@ export function App() {
                 <button type="button" onClick={() => void save()}>Save<kbd>Ctrl+S</kbd>
                   <span className="muted">{canSaveInPlace() ? "Back to its file" : "Downloads the board as a .json file"}</span></button>
                 <button type="button" onClick={() => void save(true)}>Save as…<kbd>Ctrl+Shift+S</kbd><span className="muted">To a new file</span></button>
+                <button type="button" onClick={() => void importStrands()}>Import strands…<span className="muted">Another board's strands and colours, no cards</span></button>
               </>
             )}
             <hr />
@@ -546,6 +654,9 @@ export function App() {
                 Edit selected cards…<kbd>Ctrl+E</kbd>
               </button>
               <button type="button" onClick={() => store.selectAll()}>Select all<kbd>Ctrl+A</kbd></button>
+              <hr />
+              <button type="button" onClick={() => renameStrand()}>Rename strand…<kbd>Ctrl+R</kbd></button>
+              <button type="button" onClick={removeUnused}>Remove unused strands…</button>
             </div>
           </details>
         )}
@@ -622,7 +733,7 @@ export function App() {
             <p>Map branching and converging story paths: cards on a canvas, joined by arrows.</p>
             <p className="muted">
               Boards stay on your computer: nothing is uploaded. The browser version is still being built:
-              cards, arrows, groups, search, the filter and saving work; strands and the story tools are on their way.
+              cards, arrows, groups, search, strands and saving work; the story tools are on their way.
             </p>
             <div className="welcome-actions">
               <button type="button" className="primary" onClick={() => void open()}>Open a board…</button>
@@ -682,6 +793,36 @@ export function App() {
         }} />
       )}
       {store && modal?.kind === "options" && <BoardOptions store={store} onClose={closeModal} />}
+      {store && modal?.kind === "rename" && (
+        <RenameStrand store={store} kind={modal.strandKind} value={modal.value} onClose={closeModal}
+                      onConfirm={(k, old, name, message) => {
+                        setModal({ kind: "confirm", message, okLabel: "Rename", resolve: (yes) => {
+                          if (!yes) return;
+                          const n = store.renameStrand(k, old, name);
+                          setNotice(`Renamed ${KIND_ONE[k]} “${old}” to “${name}”${n ? ` on ${n} card${n !== 1 ? "s" : ""}` : ""}`);
+                        } });
+                      }} />
+      )}
+      {modal?.kind === "checklist" && (
+        <StrandChecklist title={modal.title} intro={modal.intro} values={modal.values} okLabel={modal.okLabel}
+                         extra={modal.extra} extraLabel={modal.extraLabel} onClose={closeModal}
+                         onOk={(chosen) => {
+                           closeModal();
+                           modal.onOk(chosen);
+                         }} />
+      )}
+      {store && modal?.kind === "applyFields" && (
+        <ApplyFields kind={modal.strandKind} source={modal.source} fields={store.strand(modal.strandKind, modal.source)?.fields ?? []}
+                     others={store.allValues(modal.strandKind).filter((v) => casefold(v) !== casefold(modal.source))}
+                     onClose={closeModal} onOk={(targets, names, withValues) => {
+                       closeModal();
+                       const k = modal.strandKind;
+                       const [changed, added] = store.applyStrandFields(k, modal.source, targets, names, withValues);
+                       const plural = KIND_LABELS[k].toLowerCase();
+                       setNotice(changed ? `Added ${added} field${added === 1 ? "" : "s"} to ${changed} ${changed === 1 ? KIND_ONE[k] : plural}`
+                         : targets.length === 1 ? `That ${KIND_ONE[k]} already has these fields` : `Those ${plural} already have these fields`);
+                     }} />
+      )}
       {modal?.kind === "menu" && <ContextMenu items={modal.items} x={modal.x} y={modal.y} onClose={closeMenu} />}
       {modal?.kind === "confirm" && (
         <Confirm message={modal.message} okLabel={modal.okLabel} onAnswer={(yes) => {

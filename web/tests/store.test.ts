@@ -439,3 +439,99 @@ describe("finding and board-wide edits", () => {
     expect(s.state.display.show_grid).toBe(true);
   });
 });
+
+describe("strands", () => {
+  const board = () => store({
+    cards: [{ id: "a", tags: ["Plot"], characters: ["Rowan"] }, { id: "b", x: 400, characters: ["rowan", "Mabel"] },
+      { id: "s", kind: "strand", strand_kind: "characters", strand: "Rowan", x: 900 }],
+    saved_values: { locations: ["Harbour"], tags: ["Spare"] },
+    strands: [{ kind: "characters", name: "Rowan", description: "Keeper", fields: [{ name: "Age", value: "41" }] },
+      { kind: "characters", name: "Mabel", description: "Scribe", fields: [{ name: "Home", value: "Dock" }] },
+      { kind: "tags", name: "Spare", description: "Kept for later" }],
+  });
+
+  it("lists every strand, with the built-in statuses and strand cards' strands", () => {
+    const s = board();
+    expect(s.allValues("characters")).toEqual(["Mabel", "Rowan"]);
+    expect(s.allValues("status")).toContain("Draft");
+    expect([...s.strandUsage("characters")]).toEqual([["rowan", [2, 0]], ["mabel", [1, 0]]]);
+    expect([...s.strandCardCounts("characters")]).toEqual([["rowan", 1]]);
+    expect(s.cardsWith("characters", "ROWAN").sort()).toEqual(["a", "b", "s"]);
+  });
+
+  it("keeps a strand an edit leaves unused as a saved strand", () => {
+    const s = board();
+    s.updateCard("a", { tags: [] });
+    expect(s.state.saved_values.tags).toEqual(["Spare", "Plot"]);
+  });
+
+  it("renames everywhere, merging details onto an existing strand", () => {
+    const s = board();
+    s.renameStrand("characters", "Rowan", "Mabel");
+    expect(s.card("a")!.characters).toEqual(["Mabel"]);
+    expect(s.card("b")!.characters).toEqual(["Mabel"]);
+    expect(s.card("s")!.strand).toBe("Mabel");
+    const info = s.strand("characters", "mabel")!;
+    expect(info.description).toBe("Scribe\n\n———\n\nKeeper");
+    expect(info.fields).toEqual([["Home", "Dock"], ["Age", "41"]]);
+    expect(s.allValues("characters")).toEqual(["Mabel"]); // the old name isn't kept
+    s.undo();
+    expect(s.allValues("characters")).toEqual(["Mabel", "Rowan"]);
+  });
+
+  it("stores and forgets a strand's details", () => {
+    const s = board();
+    expect(s.setStrandInfo({ kind: "tags", name: "plot", description: "The main line", picture: "", fields: [] })).toBe(true);
+    expect(s.strand("tags", "PLOT")!.description).toBe("The main line");
+    expect(s.setStrandInfo({ kind: "tags", name: "Plot", description: "", picture: "", fields: [] })).toBe(true);
+    expect(s.strand("tags", "plot")).toBeUndefined();
+  });
+
+  it("applies one strand's fields to others", () => {
+    const s = board();
+    expect(s.applyStrandFields("characters", "Rowan", ["Mabel", "nobody"], null, true)).toEqual([1, 1]);
+    expect(s.strand("characters", "Mabel")!.fields).toEqual([["Home", "Dock"], ["Age", "41"]]);
+  });
+
+  it("finds and removes unused strands and colours", () => {
+    const s = store({ cards: [{ id: "a", color: "#111111" }], custom_colors: ["#111111", "#222222"],
+      saved_values: { locations: ["Harbour"], tags: ["Spare"] }, strands: [{ kind: "tags", name: "Spare", description: "x" }] });
+    expect(s.unusedStrands()).toEqual([{ locations: ["Harbour"] }, { tags: ["Spare"] }]);
+    expect(s.unusedSaved()).toEqual({ locations: ["Harbour"], custom_colors: ["#222222"] });
+    expect(s.removeSaved(s.unusedSaved(true))).toBe(3);
+    expect(s.allValues("tags")).toEqual([]);
+    expect(s.state.custom_colors).toEqual(["#111111"]);
+  });
+
+  it("imports strands it doesn't have, with their details", () => {
+    const s = board();
+    const added = s.importStrands({ tags: ["plot", "Twist"], locations: ["Lighthouse"] }, ["#abcdef", "#4a7fc1"],
+      [{ kind: "tags", name: "Twist", description: "A turn", picture: "", fields: [] }]);
+    expect(added).toBe(3); // "plot" is already here, the preset colour isn't custom
+    expect(s.strand("tags", "twist")!.description).toBe("A turn");
+    expect(s.state.custom_colors).toEqual(["#abcdef"]);
+  });
+
+  it("drops a strand onto a card, a group or the blank board", () => {
+    const s = store({ cards: [{ id: "a", x: 0, y: 0 }, { id: "g", kind: "group", x: 0, y: 400, width: 600, height: 300 },
+      { id: "st", kind: "strand", strand_kind: "tags", strand: "X", x: 900 }] });
+    expect(s.dropStrand("characters", "Rowan", 50, 20)).toEqual([true, ""]);
+    expect(s.card("a")!.characters).toEqual(["Rowan"]);
+    expect(s.dropStrand("characters", "rowan", 50, 20)[0]).toBe(false);
+    s.dropStrand("status", "Draft", 50, 20);
+    expect(s.dropStrand("status", "Final", 50, 20)[1]).toContain("status Draft → Final");
+    const g = s.boxes.get("g")!;
+    s.dropStrand("locations", "Harbour", g.x + 100, g.y + g.headerH + 100);
+    const made = s.state.cards.at(-1)!;
+    expect([made.kind, made.strand_kind, made.strand, made.parent]).toEqual(["strand", "locations", "Harbour", "g"]);
+    expect(s.strandDropTarget(950, 10)).toBeNull(); // a strand card's strand is fixed
+    expect(s.strandDropTarget(5000, 5000)).toEqual(["new", null]);
+  });
+
+  it("counts colour use, leaving out the card being edited", () => {
+    const s = store({ cards: [{ id: "a", color: "#111111" }, { id: "b", color: "#111111" }],
+      connections: [{ source: "a", target: "b", color: "#222222" }] });
+    expect(s.colorUsage("a").get("#111111")).toBe(1);
+    expect(s.colorUsage().get("#222222")).toBe(1);
+  });
+});

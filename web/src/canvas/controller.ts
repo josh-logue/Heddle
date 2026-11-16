@@ -10,7 +10,8 @@
 // Things that need a dialog (editing a card or arrow, confirming a delete) go through
 // the host callbacks, so this file never touches React.
 
-import { boardExtent, portCenter, hasPort, CARD_WIDTH, type CardBox, type Rect } from "../board/metrics.ts";
+import { boardExtent, portCenter, hasPort, CARD_WIDTH, HEADER_HEIGHT, type CardBox, type Rect } from "../board/metrics.ts";
+import { CARD_COLORS, type StrandKind } from "../core/model.ts";
 import { NUDGE_FINE, NUDGE_STEP, GRID, type BoardStore, type BoardState } from "../board/store.ts";
 import type { TextMeasurer } from "../board/text.ts";
 import { Camera, ZOOM_STEP } from "./camera.ts";
@@ -20,6 +21,8 @@ import { LIGHT, darker, withAlpha, type Theme } from "./theme.ts";
 import { buildMenu, type MenuItem } from "./menus.ts";
 import { canPasteHere, readFragment, writeFragment } from "../platform/clipboard.ts";
 
+/** What a strand dragged from the Strands panel carries (ui/panels/StrandsPanel.tsx). */
+export const STRAND_MIME = "application/x-heddle-strand";
 const CLICK_SLOP = 4; // px a press may move and still count as a click
 const TOOLTIP_DELAY_MS = 600;
 const NEW_CARD_MIN_DRAG = 40; // a handle dropped this far out on empty canvas makes a card
@@ -65,6 +68,8 @@ export class BoardCanvas {
   /** Connect to…: the dashed line follows the pointer until a click picks the target. */
   private linking: { source: string; end: [number, number] } | null = null;
   private suppressMenu = false;
+  /** A strand being dragged in from the Strands panel: where it would land. */
+  private strandDrag: { x: number; y: number } | null = null;
   private lastPointer: [number, number] | null = null;
   private tooltipTimer = 0;
   private nudgeTimer = 0;
@@ -86,6 +91,38 @@ export class BoardCanvas {
       if (!this.gesture) this.setHover({});
     });
     this.on(canvas, "dblclick", (e) => this.doubleClick(e as MouseEvent));
+    // A strand dragged from the Strands panel (its kind and name come with the drop).
+    const strandDrag = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes(STRAND_MIME);
+    this.on(canvas, "dragover", (e) => {
+      const d = e as DragEvent;
+      if (!strandDrag(d) || !this.store) return;
+      const [x, y] = this.camera.toScene(...this.local(d));
+      const ok = this.store.strandDropTarget(x, y) !== null;
+      if (ok) d.preventDefault();
+      d.dataTransfer!.dropEffect = ok ? "copy" : "none";
+      this.strandDrag = { x, y };
+      this.redraw();
+    });
+    this.on(canvas, "dragleave", () => {
+      this.strandDrag = null;
+      this.redraw();
+    });
+    this.on(canvas, "drop", (e) => {
+      const d = e as DragEvent;
+      this.strandDrag = null;
+      if (!strandDrag(d) || !this.store) return;
+      d.preventDefault();
+      try {
+        const { kind, name } = JSON.parse(d.dataTransfer!.getData(STRAND_MIME)) as { kind: StrandKind; name: string };
+        const [x, y] = this.camera.toScene(...this.local(d));
+        const [, notice] = this.store.dropStrand(kind, name, x, y, this.host.snapToGrid());
+        if (notice) this.host.notice(notice);
+        this.canvas.focus({ preventScroll: true });
+      } catch {
+        // (not a strand after all: nothing to drop)
+      }
+      this.redraw();
+    });
     this.on(canvas, "wheel", (e) => this.wheel(e as WheelEvent), { passive: false });
     this.on(canvas, "contextmenu", (e) => this.contextMenu(e as MouseEvent));
     // Copy, cut and paste reach the board while it has the keyboard (not a text box).
@@ -230,6 +267,15 @@ export class BoardCanvas {
       : this.linking ? { ...this.linking, click: true } : null;
     let dropTarget: string | undefined = g?.kind === "move" && g.moved ? g.hint ?? undefined : undefined;
     let ghost: { rect: Rect; color: string } | undefined;
+    if (this.strandDrag) {
+      const { x, y } = this.strandDrag;
+      const target = this.store.strandDropTarget(x, y);
+      if (target) dropTarget = target[1] ?? undefined;
+      if (target && target[0] !== "card") { // where the strand card it makes would go
+        ghost = { rect: { x: x - CARD_WIDTH / 2, y: y - 20, w: CARD_WIDTH, h: HEADER_HEIGHT },
+          color: CARD_COLORS[this.store.state.cards.length % CARD_COLORS.length]! };
+      }
+    }
     if (link) {
       dropTarget = this.connectTarget(link.source, link.end[0], link.end[1], link.click) ?? undefined;
       if (!dropTarget && !link.click && this.canCreateAt(link.source, link.end[0], link.end[1])) {

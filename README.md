@@ -13,9 +13,9 @@ through the story, where characters are introduced, and loose ends.
 or [Hollybank Garden](https://josh-logue.github.io/Heddle/?demo=hollybank-garden) demo board, or
 [open one of your own](https://josh-logue.github.io/Heddle/). The browser version is being built
 (see [Web version](#web-version)): so far it can add, edit, move, connect, group, arrange
-and delete cards, copy and paste, search, filter, replace, undo, and save (in place in Chrome
-and Edge; other browsers download a copy). The Strands panel and the story tools are still
-to come. Boards stay on your computer; nothing is uploaded.
+and delete cards, copy and paste, search, filter, replace, list cards, manage strands, undo,
+and save (in place in Chrome and Edge; other browsers download a copy). The story tools are
+still to come. Boards stay on your computer; nothing is uploaded.
 
 ## Setup
 

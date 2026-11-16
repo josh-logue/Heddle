@@ -1062,3 +1062,237 @@ button:disabled {
   letter-spacing: 0.04em;
   color: var(--muted);
 }
+
+/* ----- Card List and Strands ----- */
+.row.wrap {
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 6px;
+}
+
+.row.end {
+  justify-content: flex-end;
+  margin: 6px 0;
+}
+
+.panel .row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.small-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.9em;
+}
+
+.tree-list,
+.strand-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 2px;
+}
+
+.tree-list {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  outline: none;
+}
+
+.tree-list:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.tree-list li,
+.strand-tree li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.tree-list li.current,
+.strand-tree li.current {
+  background: var(--accent);
+  color: #fff;
+}
+
+.tree-list li.current .muted,
+.strand-tree li.current .muted {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.tree-list .muted-row {
+  opacity: 0.5;
+}
+
+.tree-list .outside .row-title {
+  font-style: italic;
+}
+
+.tree-list .row-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-list .row-title.group {
+  font-weight: 600;
+}
+
+.twisty {
+  width: 16px;
+  flex: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: 0.8em;
+}
+
+.row-status {
+  font-size: 0.85em;
+}
+
+.strand-tree {
+  margin: 6px 0;
+  max-height: 45vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  padding: 2px 4px;
+}
+
+.strand-tree .fold {
+  border: none;
+  background: transparent;
+  padding: 4px 2px;
+}
+
+.strand-tree li {
+  justify-content: space-between;
+  padding-left: 18px;
+  cursor: grab;
+}
+
+.strand-tree li.unused > span:first-child {
+  font-style: italic;
+}
+
+.strand-details {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.strand-details h3 {
+  margin: 0;
+}
+
+label.block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 8px 0;
+  color: var(--muted);
+}
+
+label.block textarea {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  resize: vertical;
+}
+
+.fields .row.between {
+  align-items: center;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto auto auto;
+  gap: 3px;
+  margin-bottom: 3px;
+}
+
+.field-row input {
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.field-row .icon {
+  min-width: 22px;
+  padding: 1px 4px;
+  font-size: 0.8em;
+}
+
+.checklist {
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+
+.checklist ul {
+  list-style: none;
+  margin: 2px 0 6px;
+  padding-left: 20px;
+}
+
+.checklist label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scroll-box {
+  max-height: 150px;
+  overflow: auto;
+  margin: 4px 0 10px;
+}
+
+.scroll-box.tall {
+  max-height: 200px;
+}
+
+.swatch-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.swatch-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
+  display: none;
+}
+
+.swatch-wrap:hover .swatch-remove,
+.swatch-remove:focus-visible {
+  display: block;
+}

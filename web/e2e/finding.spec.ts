@@ -27,7 +27,7 @@ async function lantern(page: Page) {
 
 async function openPanel(page: Page, name: string) {
   await page.getByText("Panels", { exact: true }).click();
-  await page.getByRole("checkbox", { name }).check();
+  await page.getByRole("checkbox", { name: new RegExp(`^${name} Ctrl`) }).check(); // (the name ends with its key)
   await page.mouse.click(10, 400); // close the menu
 }
 
