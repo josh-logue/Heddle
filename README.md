@@ -11,6 +11,17 @@ through the story, where characters are introduced, and loose ends.
 
 ## Setup
 
+You'll need:
+
+- **Windows.** Heddle is built and tested on Windows 11. Qt also runs on macOS and Linux, but
+  Heddle hasn't been tested there, and `Heddle.bat` is Windows-only.
+- **[Python 3.13](https://www.python.org/downloads/)**, the version Heddle is tested with. The
+  python.org installer includes the `py` launcher used below.
+- **[Git](https://git-scm.com/downloads)** to clone the repository, or use *Code → Download ZIP*
+  on GitHub instead.
+
+Everything else (PySide6, the Qt bindings) is installed from `requirements.txt`:
+
 ```powershell
 git clone https://github.com/josh-logue/Heddle.git
 cd Heddle
