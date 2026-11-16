@@ -1,4 +1,4 @@
-from warpingweft.layout import H_GAP, ROW_GAP, V_GAP, Node, arrange
+from heddle.layout import H_GAP, ROW_GAP, V_GAP, Node, arrange
 
 
 def N(i, x=0, y=0, color="", w=100, h=50):
@@ -82,7 +82,7 @@ def test_tangled_branches_are_untangled_across_several_steps(monkeypatch):
     coloured = [Node(n.id, n.w, n.h, n.x, n.y, "x") for n in nodes]
     assert crossed(arrange(coloured, edges, by_color=True), edges) == 0
     # control: keeping the cards' current order (no untangling) does cross
-    import warpingweft.layout as layout
+    import heddle.layout as layout
     original = layout._order_in_layers
     monkeypatch.setattr(layout, "_order_in_layers",
                         lambda *a, **k: original(*a, **{**k, "sweeps": 0}))

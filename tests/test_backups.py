@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
-from warpingweft.backups import backup_dir_for, file_digest, list_backups, make_backup
-from warpingweft.model import BoardData, CardData, load_board, save_board
+from heddle.backups import backup_dir_for, file_digest, list_backups, make_backup
+from heddle.model import BoardData, CardData, load_board, save_board
 
 T0 = datetime(2026, 11, 13, 9, 0, 0)
 

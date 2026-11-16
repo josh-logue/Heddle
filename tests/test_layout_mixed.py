@@ -1,8 +1,8 @@
 """Auto-arrange with unconnected nested groups and plain cards together: the groups
 keep the column (row) to themselves, and the plain cards fill the space beside the
 run of smaller groups at its end, wrapping where the groups' column (row) ends."""
-from warpingweft.layout import V_GAP, Node, arrange
-from warpingweft.model import KIND_GROUP, CardData
+from heddle.layout import V_GAP, Node, arrange
+from heddle.model import KIND_GROUP, CardData
 
 
 def G(i, w, h, y=0.0, x=0.0):

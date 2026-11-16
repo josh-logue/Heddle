@@ -2,7 +2,7 @@
 go on showing (or exporting) steps that the board no longer joins."""
 import pytest
 
-from warpingweft.model import CardData
+from heddle.model import CardData
 
 
 @pytest.fixture

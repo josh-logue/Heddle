@@ -1,9 +1,9 @@
 """Repeated titles name their group wherever cards are listed ("Warden · East
 Ward"), so three Wardens in three groups can be told apart."""
-from warpingweft.checks import run_checks
-from warpingweft.graph import StoryGraph
-from warpingweft.model import KIND_GROUP, CardData, title_labels
-from warpingweft.routes import steps_text
+from heddle.checks import run_checks
+from heddle.graph import StoryGraph
+from heddle.model import KIND_GROUP, CardData, title_labels
+from heddle.routes import steps_text
 
 
 def three_years():
@@ -35,7 +35,7 @@ def test_routes_steps_use_the_labels():
 
 
 def test_story_checks_name_the_group(qapp):
-    from warpingweft.model import ConnectionData
+    from heddle.model import ConnectionData
     cards = three_years()
     first, second = (next(c for c in cards if c.title == "Warden" and c.parent == g.id)
                      for g in cards[0:6:3])

@@ -1,6 +1,6 @@
 <!--
 The controls, written once. The Help window (F1) shows this file, and the README's
-Controls section is generated from it:  .venv\Scripts\python.exe -m warpingweft.help_text
+Controls section is generated from it:  .venv\Scripts\python.exe -m heddle.help_text
 Format: "## Section" headings, then one "- **Action**: how" line per entry.
 -->
 

@@ -24,7 +24,7 @@ if sys.platform == "win32":
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from warpingweft.model import (  # noqa: E402
+from heddle.model import (  # noqa: E402
     DISPLAY_DEFAULTS, KIND_GROUP, KIND_STRAND, BoardData, CardData, ConnectionData, RouteData,
     StrandInfo, save_board,
 )
@@ -525,7 +525,7 @@ def scatter_seeds(scene) -> None:
 def build(board: BoardData, arrange: list[str], place, path: Path, extra=None) -> BoardData:
     from PySide6.QtWidgets import QApplication
 
-    from warpingweft.scene import BoardScene
+    from heddle.scene import BoardScene
 
     QApplication.instance() or QApplication([])
     scene = BoardScene()

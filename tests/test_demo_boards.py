@@ -1,9 +1,9 @@
 """The demo boards in examples/ load and still show what they were built to show."""
 from pathlib import Path
 
-from warpingweft.checks import run_checks
-from warpingweft.graph import StoryGraph
-from warpingweft.model import FORMAT_VERSION, load_board
+from heddle.checks import run_checks
+from heddle.graph import StoryGraph
+from heddle.model import FORMAT_VERSION, load_board
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 

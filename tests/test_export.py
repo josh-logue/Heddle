@@ -3,14 +3,14 @@ import pytest
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-import warpingweft.export_dialogs as ed
-from warpingweft import theme
-from warpingweft.export import OUTLINE, TextOptions, export_route, export_text
-from warpingweft.export_image import (
+import heddle.export_dialogs as ed
+from heddle import theme
+from heddle.export import OUTLINE, TextOptions, export_route, export_text
+from heddle.export_image import (
     MARGIN, ExportTooLarge, ImageOptions, export_image, export_items, export_rect,
 )
-from warpingweft.graph import StoryGraph
-from warpingweft.model import KIND_GROUP, BoardData, CardData, ConnectionData
+from heddle.graph import StoryGraph
+from heddle.model import KIND_GROUP, BoardData, CardData, ConnectionData
 
 
 def story_board():

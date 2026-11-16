@@ -4,8 +4,8 @@ boards with a big loop. Also: undo works introductions out once, not twice."""
 import random
 import time
 
-from warpingweft.graph import StoryGraph
-from warpingweft.model import CardData, ConnectionData
+from heddle.graph import StoryGraph
+from heddle.model import CardData, ConnectionData
 
 
 def reference_introductions(g: StoryGraph) -> dict[str, list[str]]:

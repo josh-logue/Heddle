@@ -3,8 +3,8 @@ panel catches up once after a burst of selection changes (it used to rescan the 
 selection and rebuild for every card), a burst of nudges signals one change until it
 settles, and a route's key is worked out once."""
 from conftest import wait_until
-from warpingweft.graph import Route
-from warpingweft.model import KIND_GROUP, CardData
+from heddle.graph import Route
+from heddle.model import KIND_GROUP, CardData
 
 
 def test_select_all_is_one_selection_change(window, qapp):

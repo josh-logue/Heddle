@@ -3,7 +3,7 @@ import math
 
 import pytest
 
-from warpingweft.model import (
+from heddle.model import (
     CARD_COLORS, BoardData, CardData, ConnectionData, board_values, clean_list, count_values, load_board,
     rename_in_list, rename_value, save_board,
 )
@@ -132,7 +132,7 @@ def test_saved_values_round_trip(tmp_path):
 
 # ----- atomic save -------------------------------------------------------------------------
 def test_failed_save_leaves_original_and_no_temp_file(tmp_path, monkeypatch):
-    import warpingweft.model as model
+    import heddle.model as model
     p = tmp_path / "b.json"
     save_board(BoardData(cards=[CardData(title="original")]), p)
 

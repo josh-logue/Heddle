@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from PySide6.QtCore import QPointF
 
-from warpingweft.model import CardData
+from heddle.model import CardData
 
 
 def edit(scene, item, qapp, **changes):
@@ -75,7 +75,7 @@ def test_remove_unused_strands_still_removes_it(scene, settle, qapp):
 
 # ----- built-in statuses (Idea, Outline, Draft, Revised, Final) ----------------------------
 def test_built_in_statuses_are_always_on_the_board_and_never_unused(scene, settle, qapp):
-    from warpingweft.model import BUILTIN_STATUSES
+    from heddle.model import BUILTIN_STATUSES
     assert set(BUILTIN_STATUSES) <= set(scene.all_values("status"))     # on an empty board too
     item = scene.add_card(CardData(title="Gate", status="Draft"))
     settle()
@@ -87,7 +87,7 @@ def test_built_in_statuses_are_always_on_the_board_and_never_unused(scene, settl
 
 
 def test_the_panel_lists_built_in_statuses_and_they_drag(window, qapp):
-    import warpingweft.strands_panel as sp
+    import heddle.strands_panel as sp
     window.strands_dock.show()
     panel = window.strands_panel
     panel.refresh()
@@ -100,5 +100,5 @@ def test_the_panel_lists_built_in_statuses_and_they_drag(window, qapp):
     window.scene.add_card(CardData(title="Gate", status="Final"))
     panel.refresh()
     assert panel.select("status", "Final") and panel.rename_btn.isEnabled()
-    from warpingweft.view import strand_from_mime
+    from heddle.view import strand_from_mime
     assert strand_from_mime(panel.tree.drag_payload()) == ("status", "Final")

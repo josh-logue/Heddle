@@ -1,16 +1,16 @@
-"""Launch WarpingWeft.  Usage:  python main.py [board.json]"""
+"""Launch Heddle.  Usage:  python main.py [board.json]"""
 import sys
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-from warpingweft import error_log
-from warpingweft.main_window import MainWindow
+from heddle import error_log
+from heddle.main_window import MainWindow
 
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("WarpingWeft")
+    app.setApplicationName("Heddle")
     app.setStyle("Fusion")
     error_log.install()  # unexpected errors are logged and reported, not lost
     path = Path(sys.argv[1]) if len(sys.argv) > 1 else None

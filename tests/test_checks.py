@@ -1,11 +1,11 @@
 """F5: story checks (dead ends, starts, endings, loops, loose cards, routes) and their panel."""
 
-import warpingweft.checks_panel as cp
+import heddle.checks_panel as cp
 from conftest import wait_until
-from warpingweft import settings
-from warpingweft.checks import is_ending, run_checks, summary
-from warpingweft.graph import StoryGraph
-from warpingweft.model import KIND_GROUP, CardData, ConnectionData
+from heddle import settings
+from heddle.checks import is_ending, run_checks, summary
+from heddle.graph import StoryGraph
+from heddle.model import KIND_GROUP, CardData, ConnectionData
 
 
 def graph(cards, pairs):

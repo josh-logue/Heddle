@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = """
 import json, sys
 sys.path.insert(0, {root!r})
-from warpingweft.layout import Node, arrange
+from heddle.layout import Node, arrange
 ids = ["start", "left", "right", "mid", "tail", "spur", "end"]
 nodes = [Node(i, 230, 100) for i in ids]          # all at the same spot: every step a tie
 edges = [("start", "left"), ("start", "right"), ("left", "mid"), ("right", "mid"),

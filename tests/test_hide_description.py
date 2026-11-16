@@ -2,8 +2,8 @@
 Compact Cards, which makes a card with nothing else on its face just its title bar."""
 import json
 
-from warpingweft.card_item import HEADER_HEIGHT
-from warpingweft.model import DISPLAY_DEFAULTS, BoardData, CardData
+from heddle.card_item import HEADER_HEIGHT
+from heddle.model import DISPLAY_DEFAULTS, BoardData, CardData
 
 
 def texts(item):
@@ -129,7 +129,7 @@ def test_older_boards_load_with_descriptions_shown():
 
 
 def test_board_options_dialog_greys_out_what_does_not_apply(qapp):
-    from warpingweft.board_options import BoardOptionsDialog
+    from heddle.board_options import BoardOptionsDialog
     dialog = BoardOptionsDialog(dict(DISPLAY_DEFAULTS))
     assert dialog.checks["show_no_description"].isEnabled()
     assert not dialog.checks["compact_cards"].isEnabled()

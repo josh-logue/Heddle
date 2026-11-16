@@ -4,7 +4,7 @@ opened meanwhile starts from it."""
 import pytest
 from PySide6.QtCore import Qt
 
-from warpingweft.model import KIND_GROUP, KIND_STRAND, CardData
+from heddle.model import KIND_GROUP, KIND_STRAND, CardData
 from tests.conftest import wait_until
 
 
@@ -75,7 +75,7 @@ def test_a_dialog_opened_meanwhile_starts_from_the_typing(window, panel, monkeyp
     panel.title_edit.setText("Typed")
     panel.title_edit.textEdited.emit("Typed")
     seen = []
-    import warpingweft.scene as sc
+    import heddle.scene as sc
     monkeypatch.setattr(sc.CardDialog, "exec", lambda self: seen.append(self.title_edit.text()) or 0)
     s.edit_card(a)
     assert seen == ["Typed"] and a.card.title == "Typed"

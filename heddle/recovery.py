@@ -13,20 +13,19 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QLockFile, QStandardPaths
+from PySide6.QtCore import QLockFile
 
 from .model import BoardData, save_board
-from .settings import APP_NAME
+from .settings import data_dir
 
-ENV_DIR = "WARPINGWEFT_RECOVERY_DIR"  # overrides the folder (used by the tests)
+ENV_DIR = "HEDDLE_RECOVERY_DIR"  # overrides the folder (used by the tests)
 
 
 def recovery_dir() -> Path:
     override = os.environ.get(ENV_DIR, "").strip()
     if override:
         return Path(override)
-    base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.GenericDataLocation)
-    return Path(base) / APP_NAME / "recovery"
+    return data_dir("recovery")
 
 
 def _lock_for(path: Path) -> QLockFile:

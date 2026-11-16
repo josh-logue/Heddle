@@ -2,13 +2,13 @@
 what it repaired. Reused arrow ids are renewed so the story tools see every arrow."""
 import json
 
-import warpingweft.main_window as mw
-from warpingweft.graph import StoryGraph
-from warpingweft.model import BoardData
+import heddle.main_window as mw
+from heddle.graph import StoryGraph
+from heddle.model import BoardData
 
 
 def raw_board(**extra):
-    raw = {"app": "warpingweft", "version": 8,
+    raw = {"app": "heddle", "version": 8,
            "cards": [{"id": "a", "title": "A"}, {"id": "b", "title": "B"}, {"id": "c", "title": "C"}],
            "connections": [{"id": "x", "source": "a", "target": "b"}]}
     raw.update(extra)

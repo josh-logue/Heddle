@@ -7,9 +7,9 @@ import pytest
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtTest import QTest
 
-import warpingweft.main_window as mw
-from warpingweft.export import export_text
-from warpingweft.model import (
+import heddle.main_window as mw
+from heddle.export import export_text
+from heddle.model import (
     FORMAT_VERSION, BoardData, CardData, RouteData, StrandInfo, clean_strands, load_board,
     picture_for_file, picture_from_file, save_board, strands_for_file,
 )
@@ -231,7 +231,7 @@ def test_pictures_choose_missing_and_remove(window, panel, qapp, tmp_path, monke
     pic = make_image(tmp_path / "keep.png")
     panel.refresh()
     panel.select("locations", "Keep")
-    import warpingweft.strands_panel as sp
+    import heddle.strands_panel as sp
     monkeypatch.setattr(sp.QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (str(pic), "")))
     panel._choose_picture()
     assert s.strand("locations", "Keep").picture == os.path.normpath(pic)

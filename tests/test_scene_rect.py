@@ -3,8 +3,8 @@ area now grows to hold every card (plus a margin) and shrinks back, never below
 the original ±20,000."""
 from PySide6.QtCore import QPointF
 
-import warpingweft.scene as sc
-from warpingweft.model import BoardData, CardData, save_board
+import heddle.scene as sc
+from heddle.model import BoardData, CardData, save_board
 
 
 def visible(window, item) -> bool:

@@ -5,16 +5,16 @@ import pytest
 from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QMessageBox
 
-import warpingweft.dialogs as dlg
-import warpingweft.main_window as mw
-import warpingweft.scene as sc
-from warpingweft import settings
-from warpingweft.help_text import (
+import heddle.dialogs as dlg
+import heddle.main_window as mw
+import heddle.scene as sc
+from heddle import settings
+from heddle.help_text import (
     CONTROLS_END, CONTROLS_START, README_FILE, help_markdown, parse, readme_section,
     readme_with_controls,
 )
-from warpingweft.model import KIND_GROUP, CardData, save_board
-from warpingweft.recovery import orphans, recovery_dir
+from heddle.model import KIND_GROUP, CardData, save_board
+from heddle.recovery import orphans, recovery_dir
 
 
 # ----- 1. Help -----------------------------------------------------------------------
@@ -28,7 +28,7 @@ def test_controls_file_parses_into_sections():
 
 
 def test_readme_controls_match_the_controls_file():
-    """If this fails, run:  .venv\\Scripts\\python.exe -m warpingweft.help_text"""
+    """If this fails, run:  .venv\\Scripts\\python.exe -m heddle.help_text"""
     readme = README_FILE.read_text(encoding="utf-8")
     assert CONTROLS_START in readme and CONTROLS_END in readme
     assert readme_with_controls(readme) == readme
@@ -221,7 +221,7 @@ def test_saving_discarding_or_closing_removes_the_copy(window, tmp_path, monkeyp
 
 def leave_behind(board_cards=("Lost scene",)):
     """A recovery copy whose window has gone (as after a crash): no lock held."""
-    from warpingweft.model import BoardData
+    from heddle.model import BoardData
     folder = recovery_dir()
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / "Untitled-20261113-120000-abcdef.json"

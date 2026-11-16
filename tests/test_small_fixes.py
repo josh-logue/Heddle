@@ -1,8 +1,8 @@
 """Small fixes from the November 2026 review (A5): the thread's dashed line follows
 moved cards, Reverse says why it did nothing, and renaming a strand refits the groups
 holding the renamed cards."""
-from warpingweft.model import KIND_GROUP, CardData
-from warpingweft.scene import BoardScene
+from heddle.model import KIND_GROUP, CardData
+from heddle.scene import BoardScene
 from tests.conftest import wait_until
 
 

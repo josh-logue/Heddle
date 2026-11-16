@@ -5,9 +5,9 @@ details moves it back. The pushes aren't edits: undo history and the saved file 
 the positions the cards have with details closed."""
 import pytest
 
-from warpingweft.layout import V_GAP
+from heddle.layout import V_GAP
 
-from warpingweft.model import KIND_GROUP, KIND_STRAND, BoardData, CardData, ConnectionData
+from heddle.model import KIND_GROUP, KIND_STRAND, BoardData, CardData, ConnectionData
 
 
 def path_of(edge):

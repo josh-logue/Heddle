@@ -24,7 +24,7 @@ def children_index_stays_right():
     full scan: a parent change that skipped set_parent would show up here."""
     import weakref
 
-    from warpingweft.scene import BoardScene
+    from heddle.scene import BoardScene
     global _SCENES
     _SCENES = weakref.WeakSet()
     original = BoardScene.__init__
@@ -43,13 +43,13 @@ def children_index_stays_right():
 
 @pytest.fixture(autouse=True)
 def isolated_environment(tmp_path, monkeypatch):
-    monkeypatch.setenv("WARPINGWEFT_SETTINGS_FILE", str(tmp_path / "settings.ini"))
-    monkeypatch.setenv("WARPINGWEFT_BACKUP_DIR", str(tmp_path / "backups"))
-    monkeypatch.setenv("WARPINGWEFT_RECOVERY_DIR", str(tmp_path / "recovery"))
-    monkeypatch.setenv("WARPINGWEFT_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv("HEDDLE_SETTINGS_FILE", str(tmp_path / "settings.ini"))
+    monkeypatch.setenv("HEDDLE_BACKUP_DIR", str(tmp_path / "backups"))
+    monkeypatch.setenv("HEDDLE_RECOVERY_DIR", str(tmp_path / "recovery"))
+    monkeypatch.setenv("HEDDLE_LOG_DIR", str(tmp_path / "logs"))
     docs = tmp_path / "Documents"
     docs.mkdir()
-    import warpingweft.main_window as mw
+    import heddle.main_window as mw
     monkeypatch.setattr(mw.MainWindow, "_documents_dir", staticmethod(lambda: docs))
     yield
     _free_leftover_widgets()
@@ -66,7 +66,7 @@ def _free_leftover_widgets() -> None:
     app = QApplication.instance()
     if app is None:
         return
-    from warpingweft.main_window import MainWindow
+    from heddle.main_window import MainWindow
     for w in app.topLevelWidgets():
         if isinstance(w, MainWindow):
             w.setWindowModified(False)  # close without asking to save
@@ -85,7 +85,7 @@ def qapp():
 @pytest.fixture
 def window(qapp):
     """A fresh main window; closed without prompting afterwards."""
-    from warpingweft.main_window import MainWindow
+    from heddle.main_window import MainWindow
     w = MainWindow()
     w.resize(1100, 700)
     yield w

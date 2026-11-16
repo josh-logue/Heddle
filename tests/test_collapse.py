@@ -5,8 +5,8 @@ its group."""
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 
-from warpingweft.model import KIND_CARD, KIND_GROUP, BoardData, CardData, load_board, save_board
-from warpingweft.scene import BoardScene
+from heddle.model import KIND_CARD, KIND_GROUP, BoardData, CardData, load_board, save_board
+from heddle.scene import BoardScene
 
 
 def board() -> BoardScene:

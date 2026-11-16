@@ -48,7 +48,7 @@ from .values_dialog import COLORS_KEY, ValueChecklistDialog
 from .scene import BoardScene
 from .view import BoardView, board_files
 
-FILE_FILTER = "WarpingWeft files (*.json);;All files (*)"
+FILE_FILTER = "Heddle files (*.json);;All files (*)"
 RECENT_MAX = 10
 SEARCH_FLASH_MS = 700  # how long a search match's outline flashes
 AUTOSAVE_MS = 60_000
@@ -442,7 +442,7 @@ class MainWindow(QMainWindow):
                                        "Ctrl+R", "Rename a tag, character, location or status "
                                        "on every card")
         self.act_settings = self._action("Se&ttings…", self.show_settings, "Ctrl+,",
-                                         "Change WarpingWeft preferences")
+                                         "Change Heddle preferences")
         self.act_remove_unused = self._action(
             "Remove &Unused Strands…", self.remove_unused_values, None,
             "Remove strands that no card or route uses (and unused custom colors)")
@@ -1165,7 +1165,7 @@ class MainWindow(QMainWindow):
     # ----- files ------------------------------------------------------------
     def _update_title(self) -> None:
         name = self.current_path.stem if self.current_path else "Untitled"
-        self.setWindowTitle(f"{name}[*] — WarpingWeft")
+        self.setWindowTitle(f"{name}[*] — Heddle")
 
     @staticmethod
     def _documents_dir() -> Path:
@@ -1274,7 +1274,7 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle("Recover unsaved board")
-        box.setText("WarpingWeft closed without saving an untitled board.")
+        box.setText("Heddle closed without saving an untitled board.")
         box.setInformativeText(f"It was last autosaved {when} and has {n} card{'s' if n != 1 else ''}. "
                                f"Recover it?{more}")
         recover = box.addButton("Recover", QMessageBox.ButtonRole.AcceptRole)
@@ -1431,7 +1431,7 @@ class MainWindow(QMainWindow):
         if board.from_newer_version:
             QMessageBox.warning(
                 self, "Board from a newer version",
-                f"“{self.current_path.name}” was saved by a newer version of WarpingWeft "
+                f"“{self.current_path.name}” was saved by a newer version of Heddle "
                 f"(file format {board.source_version}; this version understands up to "
                 f"{FORMAT_VERSION}).\n\nIt has opened, but anything stored by newer features "
                 "may be lost if you save it from this version.")
@@ -1650,23 +1650,13 @@ class MainWindow(QMainWindow):
     # ----- backups & changes on disk -----------------------------------------
     @staticmethod
     def _backup_root() -> Path:
-        # Local app data (not the synced Documents folder): %LOCALAPPDATA%\WarpingWeft\backups,
-        # unless WARPINGWEFT_BACKUP_DIR names another folder.
-        override = os.environ.get("WARPINGWEFT_BACKUP_DIR", "").strip()
+        # Local app data (not the synced Documents folder): %LOCALAPPDATA%\Heddle\backups,
+        # unless HEDDLE_BACKUP_DIR names another folder.
+        override = os.environ.get("HEDDLE_BACKUP_DIR", "").strip()
         if override:
             return Path(override)
-        base = Path(QStandardPaths.writableLocation(
-            QStandardPaths.StandardLocation.GenericDataLocation))
-        root = base / app_settings.APP_NAME / "backups"
-        legacy = base / app_settings.LEGACY_APP_NAME / "backups"
-        if not root.exists() and legacy.is_dir():
-            # Backups made before the rename: move them over so Restore still finds them.
-            try:
-                root.parent.mkdir(parents=True, exist_ok=True)
-                legacy.rename(root)
-            except OSError:
-                return legacy  # couldn't move (e.g. in use): keep using the old folder
-        return root
+        # Backups made under a former name are moved over, so Restore still finds them.
+        return app_settings.data_dir("backups")
 
     def _backup(self, path: Path, force: bool = False) -> None:
         """Copy the file about to be overwritten. Always on the first save of a board
@@ -1694,7 +1684,7 @@ class MainWindow(QMainWindow):
         box.setWindowTitle("File changed on disk")
         box.setText(f"<b>{escape(path.name)}</b> was changed outside this window since you "
                     "opened or last saved it, for example on another computer or in another "
-                    "WarpingWeft window.")
+                    "Heddle window.")
         box.setInformativeText("Overwrite it with your version? The version on disk is backed "
                                "up first (File → Restore from Backup…). Or save yours as a "
                                "separate file.")

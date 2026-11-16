@@ -8,8 +8,8 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 
-from warpingweft.graph import StoryGraph
-from warpingweft.model import KIND_GROUP, KIND_STRAND, BoardData, CardData, ConnectionData
+from heddle.graph import StoryGraph
+from heddle.model import KIND_GROUP, KIND_STRAND, BoardData, CardData, ConnectionData
 from tests.conftest import wait_until
 
 
@@ -271,14 +271,14 @@ def test_a_large_board_lists_quickly(window, qapp):
 
 # ----- L2: sorting, the find box, the filter ------------------------------------------
 def test_natural_order_ignores_case_and_reads_numbers():
-    from warpingweft.card_list import natural_key
+    from heddle.card_list import natural_key
     titles = ["card 10", "Card 2", "apple", "Card 1"]
     assert sorted(titles, key=natural_key) == ["apple", "Card 1", "Card 2", "card 10"]
 
 
 def test_sorting_by_title_or_position_is_remembered(window, panel, qapp):
-    from warpingweft.card_list import SORT_KEY
-    from warpingweft import settings
+    from heddle.card_list import SORT_KEY
+    from heddle import settings
     panel.sort.setCurrentIndex(panel.sort.findData("title"))
     assert panel.row_ids() == ["A", "b", "S", "c", "d", "n", "a", "r"]  # A–Z, within groups
     assert settings.store().value(SORT_KEY) == "title"
@@ -339,8 +339,8 @@ def test_filtered_out_cards_are_greyed_or_hidden(window, panel, qapp):
 
 # ----- L3: status column, searching all text, Go to Card --------------------------------
 def test_the_status_column_is_an_option_remembered(window, panel, qapp):
-    from warpingweft import settings
-    from warpingweft.card_list import STATUS_KEY
+    from heddle import settings
+    from heddle.card_list import STATUS_KEY
     window.scene.cards["b"].card.status = "Draft"
     window.scene.mark_modified()
     wait_until(lambda: panel._rows["b"].text(1) == "Draft")

@@ -4,8 +4,8 @@ appeared, went or folded away), and only once per change: an edit that moves not
 an undo, or a burst of nudges no longer routes the whole board again (or twice)."""
 import pytest
 
-from warpingweft.edge_item import AVOID_SAMPLES, EdgeItem
-from warpingweft.model import CardData
+from heddle.edge_item import AVOID_SAMPLES, EdgeItem
+from heddle.model import CardData
 from conftest import wait_until
 
 
@@ -18,7 +18,7 @@ def crosses(edge, item) -> bool:
 @pytest.fixture
 def counted(monkeypatch):
     """Counts full re-routing passes and single-arrow adjustments."""
-    import warpingweft.scene as sc
+    import heddle.scene as sc
     calls = {"passes": 0, "adjust": 0}
     real_pass, real_adjust = sc.BoardScene.reroute_arrows, EdgeItem.adjust
 

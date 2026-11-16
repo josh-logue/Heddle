@@ -7,9 +7,9 @@ from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 
 from conftest import wait_until
-from warpingweft import theme
-from warpingweft.minimap import MAP_SIZE, REBUILD_DELAY_MS
-from warpingweft.model import CardData
+from heddle import theme
+from heddle.minimap import MAP_SIZE, REBUILD_DELAY_MS
+from heddle.model import CardData
 
 
 def shown(window, qapp):
@@ -264,7 +264,7 @@ def test_hotkey_minimises_but_never_closes(window, qapp):
 
 
 def test_minimised_state_is_remembered(qapp):
-    from warpingweft.main_window import MainWindow
+    from heddle.main_window import MainWindow
     first = MainWindow()
     first.minimap.set_expanded(False)
     first.setWindowModified(False)
@@ -298,7 +298,7 @@ def test_space_does_not_start_panning_over_the_minimap(window, qapp, monkeypatch
     mm = shown(window, qapp)
     from PySide6.QtWidgets import QApplication
     monkeypatch.setattr(QApplication, "widgetAt", staticmethod(lambda *a: mm))
-    monkeypatch.setattr("warpingweft.view.QCursor.pos",
+    monkeypatch.setattr("heddle.view.QCursor.pos",
                         staticmethod(lambda: mm.mapToGlobal(mm.rect().center())))
     assert window.view._pointer_over_canvas() is False
 

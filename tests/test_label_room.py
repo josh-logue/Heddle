@@ -3,10 +3,10 @@ widens to fit the longest label on the arrows between them, so the label can be
 read instead of sitting over the cards."""
 import pytest
 
-from warpingweft.card_item import PORT_RADIUS
-from warpingweft.edge_item import ARROW_LEN
-from warpingweft.layout import H_GAP, LABEL_MARGIN, Node, arrange
-from warpingweft.model import KIND_GROUP, BoardData, CardData, ConnectionData
+from heddle.card_item import PORT_RADIUS
+from heddle.edge_item import ARROW_LEN
+from heddle.layout import H_GAP, LABEL_MARGIN, Node, arrange
+from heddle.model import KIND_GROUP, BoardData, CardData, ConnectionData
 
 
 def nodes(*ids, color=""):

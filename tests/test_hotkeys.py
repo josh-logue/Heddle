@@ -8,8 +8,8 @@ from PySide6.QtGui import QKeySequence
 from PySide6.QtTest import QTest
 
 from conftest import wait_until
-from warpingweft.model import KIND_GROUP, BoardData, CardData
-from warpingweft.shortcuts import KEYS
+from heddle.model import KIND_GROUP, BoardData, CardData
+from heddle.shortcuts import KEYS
 
 NONE = Qt.KeyboardModifier.NoModifier
 SHIFT = Qt.KeyboardModifier.ShiftModifier

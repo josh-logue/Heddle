@@ -4,10 +4,10 @@ import pytest
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QGraphicsItem
 
-import warpingweft.filter_panel as fp_module
-from warpingweft import theme
-from warpingweft.card_item import LOD_TEXT, LOD_TITLE
-from warpingweft.model import CardData
+import heddle.filter_panel as fp_module
+from heddle import theme
+from heddle.card_item import LOD_TEXT, LOD_TITLE
+from heddle.model import CardData
 
 
 # ----- batched deletion -----------------------------------------------------------------

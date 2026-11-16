@@ -1,8 +1,8 @@
 """Filter panel: each multi-value category (tags, characters, introductions,
 locations) has a "match any / match all" switch in its heading, remembered per machine."""
-from warpingweft.filter_panel import MATCH_ALL_KEY, FilterPanel
-from warpingweft.model import CardData
-from warpingweft import settings
+from heddle.filter_panel import MATCH_ALL_KEY, FilterPanel
+from heddle.model import CardData
+from heddle import settings
 
 
 def _board(window):

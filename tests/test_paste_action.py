@@ -2,7 +2,7 @@
 must not be taken for a paste position (it used to raise AttributeError)."""
 import sys
 
-from warpingweft.model import CardData
+from heddle.model import CardData
 
 
 def test_copy_and_paste_several_cards_through_the_actions(window, qapp, monkeypatch):

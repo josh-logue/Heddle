@@ -7,11 +7,11 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 
-from warpingweft.graph import StoryGraph
-from warpingweft.model import (
+from heddle.graph import StoryGraph
+from heddle.model import (
     FORMAT_VERSION, BoardData, CardData, ConnectionData, RouteData, load_board, save_board,
 )
-from warpingweft.routes import (
+from heddle.routes import (
     MAX_LISTED, inherited_values, list_routes, matches, merged_fields, route_title, steps_text,
 )
 
@@ -266,7 +266,7 @@ def test_inherit_toggle_shows_card_values(window, qapp, scene, chain):
 
 
 def test_edit_fields_dialog(window, qapp, scene, chain, monkeypatch):
-    from warpingweft import route_dialog
+    from heddle import route_dialog
     p = open_panel(window, qapp)
     a, b = chain
     key = (a.card.id, b.card.id)

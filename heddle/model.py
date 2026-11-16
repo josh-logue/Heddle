@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any
 
-APP_ID = "WarpingWeft"
+APP_ID = "Heddle"
 # v2: tags/characters/locations are lists (v1: tag/characters/location strings).
 # v3: card `pov`, arrow `style`/`color`, board `display` options. v2 files load with defaults.
 # v4: `routes`, the fields given to routes in the Routes panel. v3 files load with none.
@@ -578,7 +578,7 @@ class BoardData:
     @classmethod
     def from_dict(cls, raw: Any) -> BoardData:
         if not isinstance(raw, dict) or not isinstance(raw.get("cards"), list):
-            raise ValueError("This file is not a WarpingWeft board.")
+            raise ValueError("This file is not a Heddle board.")
         # One damaged entry mustn't make the whole board unopenable: skip it and say so.
         notes: list[str] = []
         cards = _build_all(CardData, [_upgrade_card(c) for c in raw["cards"]])
@@ -711,7 +711,7 @@ def apply_bulk_edit(cards: list[CardData], color: str | None = None, add_tags=()
     return changed
 
 
-CLIPBOARD_MIME ="application/x-warpingweft-fragment"  # copied cards on the system clipboard
+CLIPBOARD_MIME ="application/x-heddle-fragment"  # copied cards on the system clipboard
 
 
 def clone_fragment(fragment: BoardData, keep_parents: set[str] = frozenset()) -> BoardData:

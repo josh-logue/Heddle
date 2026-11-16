@@ -5,7 +5,7 @@ key handler would otherwise be lost without a trace while the app carries on, ma
 with the board half-updated. install() makes every such error:
 
 * append its traceback to error.log in the app's local data folder
-  (%LOCALAPPDATA%\\WarpingWeft\\logs, or WARPINGWEFT_LOG_DIR), and
+  (%LOCALAPPDATA%\\Heddle\\logs, or HEDDLE_LOG_DIR), and
 * show a dialog saying what happened and where the log is. The app keeps running;
   the dialog suggests saving a copy of the board, in case it's in a bad state.
 
@@ -21,12 +21,12 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths, QTimer
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from .settings import APP_NAME
+from .settings import data_dir
 
-ENV_DIR = "WARPINGWEFT_LOG_DIR"   # overrides the folder (used by the tests)
+ENV_DIR = "HEDDLE_LOG_DIR"   # overrides the folder (used by the tests)
 LOG_NAME = "error.log"
 MAX_LOG_BYTES = 1_000_000         # then the log is moved to error.log.old and started afresh
 DIALOG_QUIET_S = 10.0             # after a dialog, further errors this soon are only logged
@@ -39,8 +39,7 @@ def log_dir() -> Path:
     override = os.environ.get(ENV_DIR, "").strip()
     if override:
         return Path(override)
-    base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.GenericDataLocation)
-    return Path(base) / APP_NAME / "logs"
+    return data_dir("logs")
 
 
 def log_path() -> Path:
@@ -93,7 +92,7 @@ def _show_dialog(summary: str, path: Path | None) -> None:
     box = QMessageBox(QApplication.activeWindow())
     box.setIcon(QMessageBox.Icon.Warning)
     box.setWindowTitle("Something went wrong")
-    box.setText("WarpingWeft hit an unexpected error. It's still running, but to be safe, "
+    box.setText("Heddle hit an unexpected error. It's still running, but to be safe, "
                 "consider saving a copy of your board (File → Save As…) and checking it.")
     box.setInformativeText(where)
     box.setDetailedText(summary)

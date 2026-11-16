@@ -2,8 +2,8 @@
 the direction it grew (right or down: arranging keeps the frame's top-left), instead
 of leaving the frame over its neighbours. The push carries on through anything the
 moved items then hit, and up through the groups it sits in. One undo step."""
-from warpingweft.layout import V_GAP
-from warpingweft.model import KIND_GROUP, BoardData, CardData
+from heddle.layout import V_GAP
+from heddle.model import KIND_GROUP, BoardData, CardData
 
 
 def load(scene, cards):

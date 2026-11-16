@@ -4,7 +4,7 @@ can't be hidden, and Alt (or a setting) brings the menu bar back."""
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 
-from warpingweft import settings
+from heddle import settings
 
 
 def all_actions(menu):

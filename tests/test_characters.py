@@ -3,9 +3,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QInputDialog
 
-from warpingweft.filters import collect_options, matches
-from warpingweft.graph import StoryGraph
-from warpingweft.model import KIND_GROUP, CardData, ConnectionData
+from heddle.filters import collect_options, matches
+from heddle.graph import StoryGraph
+from heddle.model import KIND_GROUP, CardData, ConnectionData
 
 
 def graph(cards, pairs):
@@ -113,7 +113,7 @@ def test_introductions_follow_edits(scene):
 
 
 def test_introductions_are_ready_after_loading(window, tmp_path):
-    from warpingweft.model import save_board
+    from heddle.model import save_board
     board(window.scene)
     path = tmp_path / "chars.json"
     save_board(window.scene.to_board_data(), path)

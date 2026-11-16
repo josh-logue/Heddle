@@ -1,7 +1,7 @@
 """Board option: hide "No description". A card with nothing else on its face keeps
 the space (as if the words were invisible); one showing tags, POV or characters
 closes it up, so those rows are its body."""
-from warpingweft.model import DISPLAY_DEFAULTS, BoardData, CardData
+from heddle.model import DISPLAY_DEFAULTS, BoardData, CardData
 
 
 def texts(item):

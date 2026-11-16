@@ -3,9 +3,9 @@ the editor form shared by cards and routes, the side-panel helper, and CardItem.
 import pytest
 from PySide6.QtCore import Qt
 
-from warpingweft.details_form import STATUS_PRESETS, DetailFields
-from warpingweft.model import CardData, RouteData
-from warpingweft.routes import COMPACT_LOOP_OVER, loop_details, matches, search_text, steps_text
+from heddle.details_form import STATUS_PRESETS, DetailFields
+from heddle.model import CardData, RouteData
+from heddle.routes import COMPACT_LOOP_OVER, loop_details, matches, search_text, steps_text
 
 
 def cards_named(*names):
@@ -94,7 +94,7 @@ def test_rebuilding_swaps_in_a_new_list(window, qapp, scene, loop_board):
 
 # ----- shared editor form ------------------------------------------------------------------------
 def test_route_editor_pov_matches_the_card_editor(qapp):
-    from warpingweft.route_dialog import RouteDialog
+    from heddle.route_dialog import RouteDialog
     data = RouteData(key=["a", "b"], characters=["Zed"], pov="Zed")
     d = RouteDialog(data, ["A", "B"], "A → B", {"characters": ["Aria", "Mara", "Zed"]})
     choices = [d.pov_combo.itemText(i) for i in range(d.pov_combo.count())]
@@ -106,8 +106,8 @@ def test_route_editor_pov_matches_the_card_editor(qapp):
 
 
 def test_both_editors_use_the_shared_form(qapp):
-    from warpingweft.dialogs import CardDialog
-    from warpingweft.route_dialog import RouteDialog
+    from heddle.dialogs import CardDialog
+    from heddle.route_dialog import RouteDialog
     card = CardDialog(CardData(title="A", tags=["T"], notes="  n  "))
     route = RouteDialog(RouteData(key=["a"], tags=["T"]), ["A"], "A", {})
     for dialog in (card, route):
@@ -118,8 +118,8 @@ def test_both_editors_use_the_shared_form(qapp):
 
 
 def test_pending_entries_are_kept_on_ok_in_both(qapp, monkeypatch):
-    from warpingweft import settings
-    from warpingweft.route_dialog import RouteDialog
+    from heddle import settings
+    from heddle.route_dialog import RouteDialog
     monkeypatch.setattr(settings, "get", lambda key: True)
     d = RouteDialog(RouteData(key=["a"]), ["A"], "A", {})
     d.locations_input.edit.setText("Harbour")
@@ -159,7 +159,7 @@ def test_faded_covers_filter_and_highlight(scene):
 
 
 def test_titles_use_story_order_for_loops_at_either_end():
-    from warpingweft.routes import default_title
+    from heddle.routes import default_title
     cards = cards_named("B", "A", "Z")
     key = ("a+b", "z")                      # the key sorts a loop's ids...
     assert default_title(key, cards, stops=(("b", "a"), ("z",))) == "B → Z"  # ...the route doesn't

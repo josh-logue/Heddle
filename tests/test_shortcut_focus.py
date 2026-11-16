@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from warpingweft.model import BoardData, CardData, save_board
+from heddle.model import BoardData, CardData, save_board
 
 CTRL = Qt.KeyboardModifier.ControlModifier
 

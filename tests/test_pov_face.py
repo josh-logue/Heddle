@@ -1,10 +1,10 @@
 """F4: the POV field, and the per-board card-face options (POV line, character pills)."""
 from PySide6.QtCore import QPointF
 
-import warpingweft.dialogs as dlg
-from warpingweft.card_item import HEADER_HEIGHT
-from warpingweft.filters import collect_options, matches
-from warpingweft.model import DISPLAY_DEFAULTS, KIND_GROUP, CardData, rename_value, save_board
+import heddle.dialogs as dlg
+from heddle.card_item import HEADER_HEIGHT
+from heddle.filters import collect_options, matches
+from heddle.model import DISPLAY_DEFAULTS, KIND_GROUP, CardData, rename_value, save_board
 
 
 def run_editor(monkeypatch, scene, item, edit):

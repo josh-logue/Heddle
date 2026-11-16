@@ -3,9 +3,9 @@ it opens in a new window (or in this one, if it's still a blank Untitled board),
 a board that's already open brings its window to the front instead."""
 import pytest
 
-import warpingweft.main_window as mw
-from warpingweft import settings, theme
-from warpingweft.model import BoardData, CardData, save_board
+import heddle.main_window as mw
+from heddle import settings, theme
+from heddle.model import BoardData, CardData, save_board
 
 
 def board_file(tmp_path, name, title):
@@ -125,7 +125,7 @@ def test_same_file():
 
 
 def test_save_as_onto_a_board_open_in_another_window_is_refused(window, tmp_path, monkeypatch, no_recovery):
-    from warpingweft.model import load_board
+    from heddle.model import load_board
     window.scene.add_card(CardData(title="Mine"))
     other = window.new_window()
     other.scene.add_card(CardData(title="Theirs"))
@@ -147,7 +147,7 @@ def test_save_as_onto_a_board_open_in_another_window_is_refused(window, tmp_path
 
 
 def test_a_big_board_without_arrows_hints_at_story_tools_once(window, tmp_path, monkeypatch):
-    from warpingweft.model import BoardData, save_board
+    from heddle.model import BoardData, save_board
     monkeypatch.setattr(mw, "_hinted_no_arrows", set())
     path = tmp_path / "sorting.json"
     save_board(BoardData(cards=[CardData(title=f"Role {n}", x=n * 300) for n in range(12)]), path)

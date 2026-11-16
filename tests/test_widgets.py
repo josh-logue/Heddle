@@ -3,8 +3,8 @@ import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 
-from warpingweft.dialogs import MemberList
-from warpingweft.token_input import EntryPickerDialog
+from heddle.dialogs import MemberList
+from heddle.token_input import EntryPickerDialog
 
 
 @pytest.fixture

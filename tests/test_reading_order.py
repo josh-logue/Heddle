@@ -1,8 +1,8 @@
 """Auto-arrange keeps reading order as you'd read the board by eye: lines from top
 to bottom, left to right within a line, where things a few pixels out of level
 still count as one line (they used to be ordered by their exact top edge)."""
-from warpingweft.layout import Node, arrange, reading_rank
-from warpingweft.model import KIND_GROUP, CardData
+from heddle.layout import Node, arrange, reading_rank
+from heddle.model import KIND_GROUP, CardData
 
 
 def order(rank):

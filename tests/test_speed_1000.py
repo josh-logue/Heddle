@@ -3,9 +3,9 @@ nested and collapsed groups and the Card panel open stays quick. The time budget
 several times what a normal machine takes, so they only catch real regressions."""
 import time
 
-import warpingweft.scene as sc
-from warpingweft.graph import StoryGraph
-from warpingweft.model import KIND_GROUP, BoardData, CardData, ConnectionData
+import heddle.scene as sc
+from heddle.graph import StoryGraph
+from heddle.model import KIND_GROUP, BoardData, CardData, ConnectionData
 
 
 def big_board() -> BoardData:

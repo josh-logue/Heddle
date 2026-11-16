@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from warpingweft.model import CardData
+from heddle.model import CardData
 
 
 def reading(window, qapp, monkeypatch):

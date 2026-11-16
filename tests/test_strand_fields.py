@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QLineEdit
 
-from warpingweft.model import (
+from heddle.model import (
     FORMAT_VERSION, BoardData, CardData, StrandInfo, apply_fields, clean_strands, merge_fields,
 )
 
@@ -184,8 +184,8 @@ def test_unused_strands_with_only_fields_count_as_detailed(scene):
 
 
 def test_import_brings_fields_along(window, tmp_path, monkeypatch):
-    import warpingweft.main_window as mw
-    from warpingweft.model import save_board
+    import heddle.main_window as mw
+    from heddle.model import save_board
     save_board(BoardData(strands=[StrandInfo("characters", "Warden", fields=AGE)]),
                tmp_path / "other.json")
     monkeypatch.setattr(mw.ValueChecklistDialog, "exec", lambda self: True)
@@ -338,7 +338,7 @@ def test_fields_and_picture_sections_collapse(window, panel, qapp):
 
 
 def test_the_table_stops_growing_and_scrolls(window, panel, qapp):
-    import warpingweft.strands_panel as sp
+    import heddle.strands_panel as sp
     many = [(f"F{i}", "") for i in range(sp.FIELDS_VISIBLE_ROWS + 4)]
     open_strand(window, panel, qapp, fields=many[:2])
     two = panel.fields_table.height()
@@ -358,7 +358,7 @@ def test_a_growing_field_list_relays_out_the_pane(window, panel, qapp, tmp_path)
     import shutil
     from pathlib import Path
 
-    import warpingweft.strands_panel as sp
+    import heddle.strands_panel as sp
     board = tmp_path / "lantern-tide.json"
     shutil.copy(Path(__file__).resolve().parents[1] / "examples" / "lantern-tide.json", board)
     window.open_path(board)
@@ -391,7 +391,7 @@ def test_a_growing_field_list_relays_out_the_pane(window, panel, qapp, tmp_path)
 
 # ----- applying one strand's fields to others ------------------------------------------------
 def make_apply_dialog(others=("Mabel", "Greta", "Warden")):
-    from warpingweft.apply_fields_dialog import ApplyFieldsDialog
+    from heddle.apply_fields_dialog import ApplyFieldsDialog
     return ApplyFieldsDialog("characters", "Rowan", AGE, list(others))
 
 
@@ -431,7 +431,7 @@ def test_apply_dialog_with_no_other_strands(qapp):
 
 
 def test_apply_button_in_the_panel(window, panel, qapp, monkeypatch):
-    import warpingweft.strands_panel as sp
+    import heddle.strands_panel as sp
     open_strand(window, panel, qapp, fields=AGE)
     s = window.scene
     s.saved_values = {"characters": ["Mabel", "Greta"], "locations": ["Marsh"]}
@@ -515,7 +515,7 @@ def test_applying_fields_refits_the_targets_strand_cards(scene):
 
 
 def test_search_finds_field_values_but_not_field_names():
-    from warpingweft.filters import search_cards
+    from heddle.filters import search_cards
     cards = [CardData(id="a", title="Crossing", characters=["Rowan"]),
              CardData(id="b", title="Market", locations=["East Ward"]),
              CardData(id="c", title="Age of lanterns")]

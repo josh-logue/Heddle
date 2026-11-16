@@ -2,11 +2,11 @@
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import QPainterPath
 
-import warpingweft.arrow_dialog as ad
-import warpingweft.scene as sc
-from warpingweft import theme
-from warpingweft.edge_item import AVOID_SAMPLES
-from warpingweft.model import KIND_GROUP, CardData, save_board
+import heddle.arrow_dialog as ad
+import heddle.scene as sc
+from heddle import theme
+from heddle.edge_item import AVOID_SAMPLES
+from heddle.model import KIND_GROUP, CardData, save_board
 from conftest import wait_until
 
 
@@ -59,7 +59,7 @@ def test_draw_color_order(scene):
 
 # ----- the arrow editor ------------------------------------------------------------------------
 def test_arrow_dialog_for_one_arrow(qapp):
-    from warpingweft.model import ConnectionData
+    from heddle.model import ConnectionData
     conn = ConnectionData("a", "b", "if she refuses", style="dashed", color="#b8475b")
     d = ad.ArrowDialog([conn], ["#123456"])
     assert d.label_edit.text() == "if she refuses"
@@ -71,7 +71,7 @@ def test_arrow_dialog_for_one_arrow(qapp):
 
 
 def test_arrow_dialog_for_mixed_arrows_leaves_unset_values(qapp):
-    from warpingweft.model import ConnectionData
+    from heddle.model import ConnectionData
     conns = [ConnectionData("a", "b", style="dashed"), ConnectionData("b", "c", color="#3f9e6e")]
     d = ad.ArrowDialog(conns)
     assert d.label() is None and d.style() is None and d.color() is None
@@ -119,7 +119,7 @@ def test_curved_arrows_run_between_facing_sides(scene):
     assert abs(first.x - ra.right()) < 0.5 and abs(first.y - ra.center().y()) < 0.5
     # The label sits on the curve, halfway along the part not covered by the handle.
     e.set_label("x")
-    from warpingweft.card_item import PORT_RADIUS
+    from heddle.card_item import PORT_RADIUS
     line = e._line
     halfway = line.pointAtPercent(line.percentAtLength((PORT_RADIUS + line.length()) / 2))
     assert e._label_rect.center() == halfway
@@ -205,7 +205,7 @@ def test_a_level_arrow_still_routes_round_a_card_in_the_way(scene):
     """With both cards at the same height the plain curve is a flat line, whose
     bounding box has no height: cards in the way used to be missed, so the arrow
     ran straight through them."""
-    from warpingweft.model import BoardData, CardData, ConnectionData
+    from heddle.model import BoardData, CardData, ConnectionData
     board = BoardData(cards=[CardData(id="a", title="a", x=0, y=0),
                              CardData(id="b", title="b", x=700, y=0),
                              CardData(id="mid", title="mid", x=350, y=0)],

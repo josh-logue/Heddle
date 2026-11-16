@@ -4,8 +4,8 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QMessageBox
 
-from warpingweft.card_item import DIMMED_OPACITY
-from warpingweft.model import (
+from heddle.card_item import DIMMED_OPACITY
+from heddle.model import (
     DISPLAY_DEFAULTS, FORMAT_VERSION, KIND_GROUP, BoardData, CardData, ConnectionData,
     clone_fragment, save_board,
 )

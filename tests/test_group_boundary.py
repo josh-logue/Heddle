@@ -3,9 +3,9 @@ card → group marks a last card. Drawn across the frame's inner gap, and used b
 the story graph as the group's entry / exit cards."""
 from PySide6.QtCore import QPointF
 
-from warpingweft.card_item import HEADER_HEIGHT
-from warpingweft.graph import StoryGraph
-from warpingweft.model import KIND_GROUP, CardData, ConnectionData, save_board
+from heddle.card_item import HEADER_HEIGHT
+from heddle.graph import StoryGraph
+from heddle.model import KIND_GROUP, CardData, ConnectionData, save_board
 
 
 def group_with(scene, *titles, vertical=False):

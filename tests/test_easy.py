@@ -2,8 +2,8 @@
 scaled to fit, and a lower minimum zoom."""
 import re
 
-from warpingweft.filters import FilterCounts, describe_counts
-from warpingweft.model import KIND_GROUP, CardData
+from heddle.filters import FilterCounts, describe_counts
+from heddle.model import KIND_GROUP, CardData
 
 
 # ----- filter counts ----------------------------------------------------------------------------
@@ -44,7 +44,7 @@ def test_unfiltered_summary_counts_both(window, qapp):
 
 # ----- PDF page size ------------------------------------------------------------------------------
 def test_pdf_page_is_actual_size_until_too_big():
-    from warpingweft.export_image import MAX_PDF_POINTS, pdf_page_size
+    from heddle.export_image import MAX_PDF_POINTS, pdf_page_size
     small = pdf_page_size(960, 480)                  # 10 × 5 inches
     assert (small.width(), small.height()) == (720, 360)
     huge = pdf_page_size(40000, 10000)
@@ -53,7 +53,7 @@ def test_pdf_page_is_actual_size_until_too_big():
 
 
 def test_huge_board_exports_a_pdf_readers_can_open(scene, tmp_path):
-    from warpingweft.export_image import export_image
+    from heddle.export_image import export_image
     scene.add_card(CardData(title="West", x=0))
     scene.add_card(CardData(title="East", x=30000))
     path = tmp_path / "wide.pdf"
@@ -79,8 +79,8 @@ def test_search_flash_survives_the_card_going_away(window, qapp, monkeypatch):
     import sys
 
     from conftest import wait_until
-    from warpingweft import main_window as mw
-    from warpingweft.model import BoardData
+    from heddle import main_window as mw
+    from heddle.model import BoardData
     errors = []
     monkeypatch.setattr(sys, "excepthook", lambda *exc: errors.append(exc))
     monkeypatch.setattr(mw, "SEARCH_FLASH_MS", 50)

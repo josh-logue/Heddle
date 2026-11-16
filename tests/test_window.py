@@ -7,12 +7,12 @@ from PySide6.QtGui import QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog
 
-import warpingweft.backup_dialog as bd
-import warpingweft.dialogs as dlg
-import warpingweft.main_window as mw
-from warpingweft import settings, theme
-from warpingweft.backups import list_backups
-from warpingweft.model import BoardData, CardData, save_board
+import heddle.backup_dialog as bd
+import heddle.dialogs as dlg
+import heddle.main_window as mw
+from heddle import settings, theme
+from heddle.backups import list_backups
+from heddle.model import BoardData, CardData, save_board
 
 
 def file_titles(path):
@@ -45,7 +45,7 @@ def test_bad_values_open_fine_and_unreadable_files_keep_the_board(window, tmp_pa
 
 # ----- autosave ------------------------------------------------------------------------
 def test_failed_autosave_retries_with_backoff(window, tmp_path, monkeypatch, qapp):
-    import warpingweft.model as model
+    import heddle.model as model
     target = tmp_path / "b.json"
     window.act_autosave.setChecked(True)
     assert window._write(target)

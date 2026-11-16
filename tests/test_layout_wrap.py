@@ -1,6 +1,6 @@
 """Auto-arrange's row limit (`wrap`): a chain carries on in a new row, starting at the
 left, after `wrap` steps. Cards at one step (a branch) count once."""
-from warpingweft.layout import H_GAP, ROW_GAP, V_GAP, Node, arrange
+from heddle.layout import H_GAP, ROW_GAP, V_GAP, Node, arrange
 
 
 def N(i, x=0, y=0, color="", w=100, h=50, group=False):

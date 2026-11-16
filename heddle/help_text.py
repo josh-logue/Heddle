@@ -1,7 +1,7 @@
 """The controls, written once in controls.md: shown by the Help window and turned
 into the README's Controls section.
 
-    .venv\\Scripts\\python.exe -m warpingweft.help_text      # refresh the README
+    .venv\\Scripts\\python.exe -m heddle.help_text      # refresh the README
 
 The README section sits between the CONTROLS_START / CONTROLS_END markers; a test
 fails if it no longer matches controls.md.
@@ -14,8 +14,8 @@ from pathlib import Path
 
 CONTROLS_FILE = Path(__file__).with_name("controls.md")
 README_FILE = Path(__file__).resolve().parents[1] / "README.md"
-CONTROLS_START = "<!-- controls:start (generated from warpingweft/controls.md: edit that file, then run "\
-                 "`python -m warpingweft.help_text`) -->"
+CONTROLS_START = "<!-- controls:start (generated from heddle/controls.md: edit that file, then run "\
+                 "`python -m heddle.help_text`) -->"
 CONTROLS_END = "<!-- controls:end -->"
 _ENTRY = re.compile(r"^- \*\*(?P<action>.+?)\*\*: (?P<how>.+)$")
 

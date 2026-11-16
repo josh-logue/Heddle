@@ -3,10 +3,10 @@ from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtGui import QFontMetricsF
 from PySide6.QtWidgets import QMessageBox
 
-import warpingweft.scene as sc
-from warpingweft.card_item import MAX_DESC_LINES, WRAP, elide_lines
-from warpingweft.edge_item import MAX_LABEL_WIDTH
-from warpingweft.model import BoardData, CardData, ConnectionData
+import heddle.scene as sc
+from heddle.card_item import MAX_DESC_LINES, WRAP, elide_lines
+from heddle.edge_item import MAX_LABEL_WIDTH
+from heddle.model import BoardData, CardData, ConnectionData
 
 
 def titles(scene):

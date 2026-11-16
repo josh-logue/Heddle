@@ -7,9 +7,9 @@ from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDro
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-import warpingweft.strands_panel as sp
-from warpingweft.model import KIND_GROUP, KIND_STRAND, CardData
-from warpingweft.view import strand_from_mime, strand_mime
+import heddle.strands_panel as sp
+from heddle.model import KIND_GROUP, KIND_STRAND, CardData
+from heddle.view import strand_from_mime, strand_mime
 
 # QDragMoveEvent's only constructor is flagged deprecated by the bindings.
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -59,7 +59,7 @@ def card(scene, title="Gate", x=300.0, y=200.0, **kw):
 def test_mime_round_trip_and_junk():
     assert strand_from_mime(strand_mime("characters", "Mara")) == ("characters", "Mara")
     junk = QMimeData()
-    junk.setData("application/x-warpingweft-strand", b"{not json")
+    junk.setData("application/x-heddle-strand", b"{not json")
     assert strand_from_mime(junk) is None
     assert strand_from_mime(QMimeData()) is None
 

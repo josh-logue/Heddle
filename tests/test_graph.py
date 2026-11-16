@@ -1,6 +1,6 @@
 """The story graph: flow through groups, reachability, order, cycles and path counts."""
-from warpingweft.graph import StoryGraph, longest_path_layers
-from warpingweft.model import KIND_GROUP, CardData, ConnectionData
+from heddle.graph import StoryGraph, longest_path_layers
+from heddle.model import KIND_GROUP, CardData, ConnectionData
 
 
 def card(cid, x=0.0, y=0.0, parent="", group=False):

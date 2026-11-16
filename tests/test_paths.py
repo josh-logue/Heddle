@@ -2,8 +2,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 
-from warpingweft.model import KIND_GROUP, CardData
-from warpingweft.path_reader import OWNER
+from heddle.model import KIND_GROUP, CardData
+from heddle.path_reader import OWNER
 
 
 def story(scene):

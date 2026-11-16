@@ -1,9 +1,9 @@
 """Find and replace in card text (one undo step), and search that covers strands:
 searching "Greta" finds every card she's on, not just ones whose text names her."""
-from warpingweft.filters import search_cards
-from warpingweft.model import KIND_GROUP, KIND_STRAND, CardData, StrandInfo, count_replacements, replace_text
-from warpingweft.replace_dialog import ReplaceDialog
-from warpingweft.scene import BoardScene
+from heddle.filters import search_cards
+from heddle.model import KIND_GROUP, KIND_STRAND, CardData, StrandInfo, count_replacements, replace_text
+from heddle.replace_dialog import ReplaceDialog
+from heddle.scene import BoardScene
 
 
 def test_search_finds_strands_after_text():

@@ -1,5 +1,5 @@
-from warpingweft.filters import NONE_KEY, NONE_LABEL, card_keys, collect_options, matches
-from warpingweft.model import CardData
+from heddle.filters import NONE_KEY, NONE_LABEL, card_keys, collect_options, matches
+from heddle.model import CardData
 
 A = CardData(title="A", tags=["Act 1"], characters=["Mara", "Rowan"], status="Draft", color="#4a7fc1")
 B = CardData(title="B", tags=["Act 2"], characters=["Mara"], color="#d9822b")

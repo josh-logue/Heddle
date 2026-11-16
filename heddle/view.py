@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 ZOOM_STEP = 1.15  # per mouse-wheel notch
-STRAND_MIME = "application/x-warpingweft-strand"  # a strand dragged from the Strands panel
+STRAND_MIME = "application/x-heddle-strand"  # a strand dragged from the Strands panel
 
 
 def board_files(mime) -> list[Path]:

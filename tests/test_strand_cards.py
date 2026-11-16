@@ -3,10 +3,10 @@ show its name, and its description in their details (never its picture); they're
 outside the story tools; and they stay linked through renames, merges and undo."""
 from PySide6.QtCore import QPointF
 
-from warpingweft.export import export_text
-from warpingweft.filters import matches
-from warpingweft.graph import StoryGraph
-from warpingweft.model import (
+from heddle.export import export_text
+from heddle.filters import matches
+from heddle.graph import StoryGraph
+from heddle.model import (
     FORMAT_VERSION, KIND_GROUP, KIND_STRAND, BoardData, CardData, ConnectionData, StrandInfo,
 )
 
@@ -138,7 +138,7 @@ def test_pasted_strand_card_brings_its_strand(scene):
 
 # ----- editor and panel ------------------------------------------------------------------------------------
 def test_card_editor_strand_type(qapp):
-    from warpingweft.dialogs import CardDialog
+    from heddle.dialogs import CardDialog
     d = CardDialog(CardData(title="Old", tags=["t"]), suggestions={"locations": ["Keep", "Hall"]})
     d.strand_radio.setChecked(True)
     assert not d._form.isRowVisible(d.title_edit) and d._form.isRowVisible(d.strand_row)

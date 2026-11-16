@@ -1,4 +1,4 @@
-from warpingweft.history import History
+from heddle.history import History
 
 
 def test_noop_commit_is_ignored():

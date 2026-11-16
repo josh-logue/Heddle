@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, QStandardPaths
 
 # key -> (default, section in the Settings dialog, label, tooltip)
 OPTIONS: dict[str, tuple[bool, str, str, str]] = {
@@ -48,8 +49,8 @@ OPTIONS: dict[str, tuple[bool, str, str, str]] = {
 
 def store() -> QSettings:
     """All app preferences: the registry on Windows, or an INI file if
-    WARPINGWEFT_SETTINGS_FILE is set (used by the tests to stay isolated)."""
-    path = os.environ.get("WARPINGWEFT_SETTINGS_FILE", "").strip()
+    HEDDLE_SETTINGS_FILE is set (used by the tests to stay isolated)."""
+    path = os.environ.get("HEDDLE_SETTINGS_FILE", "").strip()
     if path:
         return QSettings(path, QSettings.Format.IniFormat)
     current = QSettings(APP_NAME, APP_NAME)
@@ -57,27 +58,65 @@ def store() -> QSettings:
     return current
 
 
-APP_NAME = "WarpingWeft"
-LEGACY_APP_NAME = "StoryBoard"  # the app's former name; its preferences are carried over once
+APP_NAME = "Heddle"
+# The app's former names, newest first (WarpingWeft until November 2026, StoryBoard before
+# that). Their preferences and local data are carried over once, so someone who skipped a
+# version still gets theirs; the newest name that has anything wins.
+LEGACY_APP_NAMES = ("WarpingWeft", "StoryBoard")
 _legacy_checked = False
 
 
+def _legacy_store(name: str) -> QSettings:
+    """The preferences saved under a former name (a seam the tests replace)."""
+    return QSettings(name, name)
+
+
 def _adopt_legacy(current: QSettings) -> None:
-    """First run after the rename: copy preferences saved under the old name, so
-    the theme, autosave choice, window layout etc. aren't reset. The old entry is
-    left in place (harmless, and lets an older copy of the app keep working)."""
+    """First run after a rename: copy preferences saved under a former name, so the
+    theme, autosave choice, window layout, Open Recent etc. aren't reset. The old entry
+    is left in place (harmless, and lets an older copy of the app keep working)."""
     global _legacy_checked
     if _legacy_checked:
         return
     _legacy_checked = True
     if current.allKeys():
         return
-    legacy = QSettings(LEGACY_APP_NAME, LEGACY_APP_NAME)
-    keys = legacy.allKeys()
-    for key in keys:
-        current.setValue(key, legacy.value(key))
-    if keys:
+    for name in LEGACY_APP_NAMES:
+        legacy = _legacy_store(name)
+        keys = legacy.allKeys()
+        if not keys:
+            continue
+        for key in keys:
+            current.setValue(key, legacy.value(key))
         current.sync()
+        return
+
+
+def _data_base() -> Path:
+    """%LOCALAPPDATA% on Windows: local app data, not the synced Documents folder."""
+    return Path(QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.GenericDataLocation))
+
+
+def data_dir(sub: str) -> Path:
+    """The app's local folder `sub` (backups, logs, recovery) under %LOCALAPPDATA%\\Heddle.
+    The first time it's missing, the same folder from a former name is moved over, so
+    Restore from Backup, crash recovery and the error log keep their history. If the
+    move fails (e.g. a file is in use), the old folder is used as it is."""
+    base = _data_base()
+    root = base / APP_NAME / sub
+    if root.exists():
+        return root
+    for name in LEGACY_APP_NAMES:
+        legacy = base / name / sub
+        if legacy.is_dir():
+            try:
+                root.parent.mkdir(parents=True, exist_ok=True)
+                legacy.rename(root)
+            except OSError:
+                return legacy
+            return root
+    return root
 
 
 def get(key: str) -> bool:

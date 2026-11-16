@@ -13,7 +13,7 @@ class HelpDialog(QDialog):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self.setWindowTitle("WarpingWeft controls")
+        self.setWindowTitle("Heddle controls")
         self.browser = QTextBrowser()
         self.browser.setOpenExternalLinks(True)
         self.browser.setMarkdown(help_markdown())

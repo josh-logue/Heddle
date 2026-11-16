@@ -5,8 +5,8 @@ import pytest
 from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtTest import QTest
 
-from warpingweft.model import KIND_GROUP, CardData
-from warpingweft.scene import DRAG_LIFT
+from heddle.model import KIND_GROUP, CardData
+from heddle.scene import DRAG_LIFT
 
 
 @pytest.fixture

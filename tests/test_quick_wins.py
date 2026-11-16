@@ -4,10 +4,10 @@ import sys
 
 import pytest
 
-from warpingweft import error_log, theme
-from warpingweft.export import TextOptions, export_route, export_text, md_escape
-from warpingweft.graph import StoryGraph
-from warpingweft.model import BoardData, CardData, ConnectionData
+from heddle import error_log, theme
+from heddle.export import TextOptions, export_route, export_text, md_escape
+from heddle.graph import StoryGraph
+from heddle.model import BoardData, CardData, ConnectionData
 
 
 # ----- Markdown escaping ----------------------------------------------------------------------
@@ -134,6 +134,6 @@ def test_app_uses_only_the_essential_qt_modules():
     essentials = {"QtCore", "QtGui", "QtWidgets", "QtSvg"}
     root = Path(__file__).parents[1]
     used = set()
-    for f in [*root.glob("warpingweft/*.py"), root / "main.py"]:
+    for f in [*root.glob("heddle/*.py"), root / "main.py"]:
         used |= set(re.findall(r"PySide6\.(Qt\w+)", f.read_text(encoding="utf-8")))
     assert used <= essentials, used - essentials

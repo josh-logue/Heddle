@@ -3,8 +3,8 @@ else's highlight (a character thread, a path highlight, a story check) or bring
 back a highlight cleared with Esc. Taking a step in the reader re-highlights."""
 import pytest
 
-from warpingweft.model import CardData
-from warpingweft.path_reader import OWNER
+from heddle.model import CardData
+from heddle.path_reader import OWNER
 
 
 @pytest.fixture

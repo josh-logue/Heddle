@@ -5,9 +5,9 @@ from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-import warpingweft.main_window as mw
-import warpingweft.scene as sc
-from warpingweft.model import BoardData, CardData, save_board
+import heddle.main_window as mw
+import heddle.scene as sc
+from heddle.model import BoardData, CardData, save_board
 
 
 def key(window, k, mods=Qt.KeyboardModifier.NoModifier):
@@ -156,7 +156,7 @@ def test_drop_on_a_board_in_use_opens_a_new_window(window, tmp_path, monkeypatch
 
 # ----- 3. copy / paste / duplicate ---------------------------------------------------------
 def test_clone_fragment_remaps_ids_parents_and_arrows():
-    from warpingweft.model import ConnectionData, clone_fragment
+    from heddle.model import ConnectionData, clone_fragment
     frag = BoardData(cards=[CardData(id="g", kind="group"), CardData(id="a", parent="g", tags=["t"]),
                             CardData(id="b", parent="elsewhere"), CardData(id="c", parent="kept")],
                      connections=[ConnectionData("a", "b", "x"), ConnectionData("a", "zzz")])
@@ -260,7 +260,7 @@ def test_paste_ignores_other_clipboard_content(window, qapp):
 
 # ----- 4. editing several cards ----------------------------------------------------------
 def test_apply_bulk_edit_rules():
-    from warpingweft.model import apply_bulk_edit
+    from heddle.model import apply_bulk_edit
     a = CardData(tags=["Act 1", "plot"], status="Draft", color="#4a7fc1")
     b = CardData(tags=["PLOT"], status="Final", color="#d9822b")
     c = CardData(tags=["x"])
@@ -276,7 +276,7 @@ def test_apply_bulk_edit_rules():
 
 
 def test_multi_edit_dialog_applies_to_all_selected(window, qapp, monkeypatch):
-    import warpingweft.multi_edit as me
+    import heddle.multi_edit as me
     s = window.scene
     a = s.add_card(CardData(title="A", tags=["old"], status="Draft"))
     b = s.add_card(CardData(title="B", tags=["keep"], status="Final", x=400))
@@ -300,7 +300,7 @@ def test_multi_edit_dialog_applies_to_all_selected(window, qapp, monkeypatch):
     window.show()
     window.view.setFocus()
     key(window, Qt.Key.Key_Return)                     # Enter with several cards selected
-    from warpingweft.model import CARD_COLORS
+    from heddle.model import CARD_COLORS
     assert a.card.tags == ["Act 2"] and b.card.tags == ["keep", "Act 2"]
     assert a.card.status == b.card.status == "Revised"
     assert a.card.color == b.card.color == CARD_COLORS[3]
@@ -311,7 +311,7 @@ def test_multi_edit_dialog_applies_to_all_selected(window, qapp, monkeypatch):
 
 
 def test_multi_edit_colour_choice_is_explicit(qapp):
-    from warpingweft.multi_edit import MultiEditDialog
+    from heddle.multi_edit import MultiEditDialog
     d = MultiEditDialog(2)
     assert d._swatches.checkedButton() is None and d.color() is None   # nothing pre-picked
     d._swatches.buttons()[2].click()
@@ -321,7 +321,7 @@ def test_multi_edit_colour_choice_is_explicit(qapp):
 
 
 def test_multi_edit_defaults_change_nothing(window, monkeypatch):
-    import warpingweft.multi_edit as me
+    import heddle.multi_edit as me
     s = window.scene
     a = s.add_card(CardData(tags=["t"], status="Draft", color="#123456"))
     b = s.add_card(CardData(x=400))
@@ -334,7 +334,7 @@ def test_multi_edit_defaults_change_nothing(window, monkeypatch):
 
 # ----- 5. search -------------------------------------------------------------------------
 def test_search_cards_fields_case_and_snippets():
-    from warpingweft.filters import search_cards
+    from heddle.filters import search_cards
     cards = [CardData(id="1", title="The Lighthouse"),
              CardData(id="2", title="x", description="She climbs the\nLIGHTHOUSE stairs at dawn"),
              CardData(id="3", title="y", notes="lighthouse keeper backstory"),
@@ -408,7 +408,7 @@ def test_pending_nudge_does_not_leak_into_a_new_board(window, qapp):
 
 
 def test_bulk_edit_adds_and_removes_characters_and_locations():
-    from warpingweft.model import apply_bulk_edit
+    from heddle.model import apply_bulk_edit
     a = CardData(characters=["Mara", "Nia"], pov="Mara", locations=["Keep"])
     b = CardData(characters=["nia"])
     changed = apply_bulk_edit([a, b], add={"characters": ["Rowan"], "locations": ["Gate"]},
@@ -420,7 +420,7 @@ def test_bulk_edit_adds_and_removes_characters_and_locations():
 
 def test_bulk_edit_gives_strand_cards_only_the_color():
     """(Bug fix: strand cards were given tags and a status, which they can't hold.)"""
-    from warpingweft.model import KIND_STRAND, apply_bulk_edit
+    from heddle.model import KIND_STRAND, apply_bulk_edit
     s = CardData(kind=KIND_STRAND, strand_kind="characters", strand="Mara")
     assert apply_bulk_edit([s], add_tags=["x"], status="Draft",
                            add={"characters": ["Nia"]}) == []
@@ -429,7 +429,7 @@ def test_bulk_edit_gives_strand_cards_only_the_color():
 
 
 def test_multi_edit_dialog_edits_characters_and_locations(window, qapp, monkeypatch):
-    import warpingweft.multi_edit as me
+    import heddle.multi_edit as me
     s = window.scene
     a = s.add_card(CardData(title="A", characters=["Mara"], locations=["Keep"]))
     b = s.add_card(CardData(title="B", x=400, characters=["Mara", "Nia"]))

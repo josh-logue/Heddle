@@ -7,8 +7,8 @@ from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication
 
-from warpingweft.edge_item import AVOID_SAMPLES
-from warpingweft.model import CardData
+from heddle.edge_item import AVOID_SAMPLES
+from heddle.model import CardData
 from conftest import wait_until
 
 

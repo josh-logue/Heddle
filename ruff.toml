@@ -12,4 +12,4 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"warpingweft/theme.py" = ["E501"]  # long lines inside Qt stylesheet strings
+"heddle/theme.py" = ["E501"]  # long lines inside Qt stylesheet strings

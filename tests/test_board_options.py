@@ -2,11 +2,11 @@
 "not part of the story" flag, and the app setting for the bars over the canvas."""
 from PySide6.QtWidgets import QMenu
 
-from warpingweft import settings
-from warpingweft.board_options import SECTIONS, BoardOptionsDialog
-from warpingweft.checks import run_checks
-from warpingweft.graph import StoryGraph
-from warpingweft.model import (
+from heddle import settings
+from heddle.board_options import SECTIONS, BoardOptionsDialog
+from heddle.checks import run_checks
+from heddle.graph import StoryGraph
+from heddle.model import (
     DISPLAY_DEFAULTS, DISPLAY_TOGGLES, FORMAT_VERSION, KIND_GROUP, BoardData, CardData, ConnectionData,
     clean_display,
 )
@@ -181,7 +181,7 @@ def test_flag_from_the_menu_is_undoable_and_drawn_dashed(scene, settle):
 
 
 def test_card_editor_has_the_flag(qapp):
-    from warpingweft.dialogs import CardDialog
+    from heddle.dialogs import CardDialog
     d = CardDialog(CardData(title="A", outside_story=True))
     assert d.outside_check.isChecked()
     d.outside_check.setChecked(False)

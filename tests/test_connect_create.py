@@ -4,10 +4,10 @@ from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication
 
-import warpingweft.dialogs as dlg
-import warpingweft.main_window as mw
-import warpingweft.scene as sc
-from warpingweft.model import KIND_GROUP, CardData
+import heddle.dialogs as dlg
+import heddle.main_window as mw
+import heddle.scene as sc
+from heddle.model import KIND_GROUP, CardData
 
 NO_MODS = Qt.KeyboardModifier.NoModifier
 CTRL = Qt.KeyboardModifier.ControlModifier

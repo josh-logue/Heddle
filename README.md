@@ -1,4 +1,4 @@
-# WarpingWeft
+# Heddle
 
 A desktop canvas for mapping branching and converging story paths. Story cards can be moved
 around freely, linked with directed arrows and gathered into groups. Each card can carry tags,
@@ -22,7 +22,7 @@ it, reinstall, and run the tests.
 
 ## Run
 
-Double-click **`WarpingWeft.bat`** (sets up the environment automatically on first run).
+Double-click **`Heddle.bat`** (sets up the environment automatically on first run).
 Dragging a board `.json` onto it opens that board. Or from a terminal:
 
 ```powershell
@@ -41,17 +41,17 @@ Dragging a board `.json` onto it opens that board. Or from a terminal:
 The pure-Python modules (`model`, `graph`, `layout`, `filters`, `routes`, `checks`, `export`,
 `history`, `backups`) are tested directly; canvas and window behaviour runs headless through Qt's offscreen platform. Each test
 uses a throwaway settings file, backup, recovery and log folders, and Documents folder (via the
-`WARPINGWEFT_SETTINGS_FILE`, `WARPINGWEFT_BACKUP_DIR`, `WARPINGWEFT_RECOVERY_DIR` and
-`WARPINGWEFT_LOG_DIR` environment variables), so running the suite never touches your real
+`HEDDLE_SETTINGS_FILE`, `HEDDLE_BACKUP_DIR`, `HEDDLE_RECOVERY_DIR` and
+`HEDDLE_LOG_DIR` environment variables), so running the suite never touches your real
 preferences, backups or boards.
 
-**Unexpected errors** are written to `%LOCALAPPDATA%\WarpingWeft\logs\error.log` (kept under
+**Unexpected errors** are written to `%LOCALAPPDATA%\Heddle\logs\error.log` (kept under
 about 1 MB; the previous log is kept as `error.log.old`) and reported in a dialog; the app keeps
-running. Set `WARPINGWEFT_LOG_DIR` to use another folder.
+running. Set `HEDDLE_LOG_DIR` to use another folder.
 
 ## Controls
 
-<!-- controls:start (generated from warpingweft/controls.md: edit that file, then run `python -m warpingweft.help_text`) -->
+<!-- controls:start (generated from heddle/controls.md: edit that file, then run `python -m heddle.help_text`) -->
 
 ### Cards
 
@@ -158,7 +158,7 @@ running. Set `WARPINGWEFT_LOG_DIR` to use another folder.
 
 ```
 main.py                         entry point
-warpingweft/
+heddle/
   Pure Python (no Qt), tested directly:
   model.py                      dataclasses, JSON load/save and cleaning, strands
   graph.py                      the story as a graph: before/after, loops, routes, introductions
@@ -238,25 +238,30 @@ opens, with a warning that saving it here may drop anything the newer version ad
 
 **Autosave** (File → Autosave, on by default): 60 seconds after the first unsaved change the
 board saves itself; further edits don't push that back. An untitled board isn't given a name:
-it keeps a recovery copy in `%LOCALAPPDATA%\WarpingWeft\recovery\` instead (nothing is written to
+it keeps a recovery copy in `%LOCALAPPDATA%\Heddle\recovery\` instead (nothing is written to
 Documents, and the window stays "Untitled"). If the app closes without the board being saved,
 the next launch offers to recover it; saving it, or choosing Discard when closing, removes the copy.
-Set `WARPINGWEFT_RECOVERY_DIR` to use another folder.
+Set `HEDDLE_RECOVERY_DIR` to use another folder.
 A failed autosave (e.g. the file is briefly locked by OneDrive) retries after 10 s, 30 s, then every 60 s.
 
 **Backups:** before any save (manual or automatic) replaces a board file, the existing file is
-copied to `%LOCALAPPDATA%\WarpingWeft\backups\<board name>-<id>\` (local, not synced). The first
+copied to `%LOCALAPPDATA%\Heddle\backups\<board name>-<id>\` (local, not synced). The first
 save of a board in each session always makes one, so the file as you opened it is kept; after
 that at most one every 5 minutes, and the newest 20 per board are kept. Restore with
-File → Restore from Backup…. Set the `WARPINGWEFT_BACKUP_DIR` environment variable to keep
+File → Restore from Backup…. Set the `HEDDLE_BACKUP_DIR` environment variable to keep
 backups somewhere else.
 
 **Changed on disk:** if the board file was modified elsewhere since this window opened or last
-saved it (another computer via OneDrive, or a second WarpingWeft window), saving asks whether to
+saved it (another computer via OneDrive, or a second Heddle window), saving asks whether to
 overwrite (backing up their version first) or save yours as a separate file. Autosave never
 overwrites such a change; it asks once, and pauses if you cancel.
 
+**Former names:** Heddle used to be called WarpingWeft, and StoryBoard before that. On the first
+run, preferences (theme, Open Recent, window layout…) saved under the newest former name are
+copied over, and its `backups`, `logs` and `recovery` folders are moved into
+`%LOCALAPPDATA%\Heddle\`. Boards saved under either name open as before.
+
 ## Licence
 
-MIT: see [LICENSE](LICENSE). WarpingWeft uses Qt through PySide6-Essentials, which is
+MIT: see [LICENSE](LICENSE). Heddle uses Qt through PySide6-Essentials, which is
 available under the LGPL.

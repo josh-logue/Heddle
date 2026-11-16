@@ -4,8 +4,8 @@ moves made in code (arrange, remove from group, the snap after a drop) must not 
 selected card behind outside its group's frame."""
 from PySide6.QtCore import QPointF
 
-from warpingweft.model import KIND_GROUP, BoardData, CardData
-from warpingweft.scene import BoardScene
+from heddle.model import KIND_GROUP, BoardData, CardData
+from heddle.scene import BoardScene
 
 
 def nested_board() -> BoardScene:

@@ -3,8 +3,8 @@ or the right-click menu, and used by auto-arrange. Arranging and changing it are
 each one undo step."""
 import json
 
-from warpingweft.layout import H_GAP, ROW_GAP
-from warpingweft.model import (
+from heddle.layout import H_GAP, ROW_GAP
+from heddle.model import (
     ARRANGE_WRAP_MAX, KIND_GROUP, BoardData, CardData, ConnectionData, load_board, save_board,
 )
 
@@ -75,7 +75,7 @@ def test_arranging_with_a_limit_is_one_undo_step(scene):
 
 
 def test_group_editor_sets_the_row_limit(qapp):
-    from warpingweft.dialogs import CardDialog
+    from heddle.dialogs import CardDialog
     d = CardDialog(CardData(title="G", kind=KIND_GROUP, arrange_wrap=5))
     assert d.wrap_spin.value() == 5
     assert d.wrap_spin.maximum() == ARRANGE_WRAP_MAX
