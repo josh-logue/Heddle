@@ -29,6 +29,8 @@ const FRAME_EDGE_HIT = 14; // this close to a group's frame counts as on its edg
 export interface CanvasHost {
   editCard(id: string, isNew: boolean): void;
   editArrows(ids: string[]): void;
+  /** Edit several selected cards at once. */
+  editSeveral(): void;
   /** Ask before deleting several things; resolves true to go ahead. */
   confirm(message: string): Promise<boolean>;
   /** A short message for the status line ("nothing to reverse"). */
@@ -598,6 +600,7 @@ export class BoardCanvas {
     const items = buildMenu(store, this.hitAt(sx, sy), x, y, {
       editCard: (id) => this.host.editCard(id, false),
       editArrows: (ids) => this.host.editArrows(ids),
+      editSeveral: () => this.host.editSeveral(),
       addCardAt: (cx, cy, group) => {
         const card = store.addCard(cx, cy, this.host.snapToGrid(), undefined, group);
         this.host.editCard(card.id, true);
@@ -724,7 +727,8 @@ export class BoardCanvas {
     } else if (e.key === "Enter" && store.selected.size + store.selectedArrows.size) {
       e.preventDefault();
       if (store.selected.size === 1) this.host.editCard([...store.selected][0]!, false);
-      else if (!store.selected.size) this.host.editArrows([...store.selectedArrows]);
+      else if (store.selected.size > 1) this.host.editSeveral();
+      else this.host.editArrows([...store.selectedArrows]);
     } else if (ctrl && e.shiftKey && e.code === "KeyA") {
       e.preventDefault();
       const groups = [...store.selected].filter((id) => store.boxes.get(id)?.isGroup);

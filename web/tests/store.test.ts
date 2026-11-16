@@ -381,3 +381,61 @@ describe("dragging", () => {
     expect(s.card("p")!.parent).toBe("");
   });
 });
+
+describe("finding and board-wide edits", () => {
+  const board = () => store({
+    cards: [{ id: "a", title: "Rowan arrives", tags: ["Plot"], characters: ["Rowan"] },
+      { id: "b", title: "Mabel's tide", x: 400, tags: ["plot", "Act 1"] },
+      { id: "g", kind: "group", collapsed: true, x: 0, y: 600 }, { id: "c", title: "Hidden tide", parent: "g", x: 30, y: 700 }],
+  });
+
+  it("fades what the filter doesn't match and counts what it shows", () => {
+    const s = board();
+    s.setFilter(new Map([["tags", new Set(["plot"])]]), new Set());
+    expect([...s.dimmed].sort()).toEqual(["c", "g"]);
+    expect(s.filterCounts).toEqual({ cards_shown: 2, cards_total: 3, groups_shown: 0, groups_total: 1 });
+    s.setFilter(new Map([["tags", new Set(["plot", "act 1"])]]), new Set(["tags"]));
+    expect(s.dimmed.has("a")).toBe(true);
+    s.setFilter(new Map(), new Set());
+    expect(s.dimmed.size).toBe(0);
+    expect(s.filterActive).toBe(false);
+  });
+
+  it("counts search matches folded into a collapsed group, and reveals them", () => {
+    const s = board();
+    s.setSearchHits(["b", "c"]);
+    expect([...s.searchHits]).toEqual([["g", 1]]);
+    expect(s.reveal(["c"])).toBe(true);
+    expect(s.boxes.get("c")!.visible).toBe(true);
+    expect(s.reveal(["c"])).toBe(false);
+    expect(s.titleContext("c")).toBe("New card");
+  });
+
+  it("edits several cards as one step", () => {
+    const s = board();
+    expect(s.bulkEdit(["a", "b"], { color: "#123abc", addTags: ["New"], removeTags: ["PLOT"], status: " Final " })).toBe(2);
+    expect(s.card("a")).toMatchObject({ color: "#123abc", tags: ["New"], status: "Final" });
+    expect(s.card("b")!.tags).toEqual(["Act 1", "New"]);
+    expect(s.state.custom_colors).toEqual(["#123abc"]);
+    s.undo();
+    expect(s.card("a")!.tags).toEqual(["Plot"]);
+  });
+
+  it("replaces text, in every card or just the chosen ones", () => {
+    const s = board();
+    expect(s.replaceInCards("tide", "sea", ["title"], false)).toBe(2);
+    expect(s.card("c")!.title).toBe("Hidden sea");
+    s.undo();
+    expect(s.replaceInCards("tide", "sea", ["title"], false, ["b"])).toBe(1);
+    expect(s.card("c")!.title).toBe("Hidden tide");
+    expect(s.replaceInCards("zzz", "x", ["title"], false)).toBe(0);
+  });
+
+  it("changes display options as one step", () => {
+    const s = board();
+    s.setDisplay({ show_grid: false, arrow_routing: "curved" });
+    expect(s.state.display).toMatchObject({ show_grid: false, arrow_routing: "curved" });
+    s.undo();
+    expect(s.state.display.show_grid).toBe(true);
+  });
+});

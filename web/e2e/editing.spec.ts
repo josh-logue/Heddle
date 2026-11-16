@@ -210,7 +210,8 @@ test("saves by downloading where the browser can't save in place", async ({ page
 test("asks before replacing a board with unsaved changes", async ({ page }) => {
   await newBoard(page);
   await addCard(page, "Rowan", 400, 300);
-  await page.getByRole("button", { name: "New", exact: true }).click();
+  await page.getByText("File", { exact: true }).click();
+  await page.getByRole("button", { name: /New board/ }).click();
   const ask = page.getByRole("dialog", { name: "Heddle" });
   await expect(ask).toContainText("has changes that aren't saved");
   await ask.getByRole("button", { name: "Cancel" }).click();

@@ -12,7 +12,8 @@ import { StoryGraph } from "../core/graph.ts";
 import { History, deepEqual } from "../core/history.ts";
 import { V_GAP, arrange, edgeKey, makeNode } from "../core/layout.ts";
 import {
-  CARD_COLORS, KIND_GROUP, boardToJson, cloneFragment, makeBoard, makeCard, newId,
+  CARD_COLORS, KIND_GROUP, applyBulkEdit, boardToJson, cleanDisplay, cloneFragment, copyCard, makeBoard, makeCard, newId,
+  replaceText, type BulkEdit, type TextField,
   type BoardData, type CardData, type ConnectionData, type Display, type RouteData, type SavedValues,
   type StrandInfo,
 } from "../core/model.ts";
@@ -21,6 +22,7 @@ import {
 } from "./metrics.ts";
 import { labelTexts, routeArrows, type ArrowShape } from "./routing.ts";
 import { lineHeight, type TextMeasurer } from "./text.ts";
+import { matches as filterMatches, type Extras, type FilterCounts } from "../core/filters.ts";
 
 export const GRID = 25;
 export const PUSH_GAP = V_GAP;
@@ -104,6 +106,15 @@ export class BoardStore {
   version = 0;
   /** True while cards are being dragged: arrows skip the slow "avoid cards" search. */
   moving = false;
+  /** The Filter panel's ticks: {category: casefolded keys}, and the "match all" categories. */
+  filter: { selection: Map<string, Set<string>>; matchAll: Set<string> } = { selection: new Map(), matchAll: new Set() };
+  /** Cards and groups the filter fades out, and how many it shows. */
+  dimmed = new Set<string>();
+  filterCounts: FilterCounts = { cards_shown: 0, cards_total: 0, groups_shown: 0, groups_total: 0 };
+  /** Collapsed groups: how many search matches are folded away inside each. */
+  searchHits = new Map<string, number>();
+  /** A card outlined for a moment so the eye finds it (a search match, Go to Card). */
+  flash: string | null = null;
 
   private readonly shift = new Map<string, [number, number]>();
   private readonly loans = new Map<string, Move[]>();
@@ -187,7 +198,112 @@ export class BoardStore {
     for (const id of this.selected) if (!this.boxes.get(id)?.visible) this.selected.delete(id);
     const ids = new Set(s.connections.map((c) => c.id));
     for (const id of this.selectedArrows) if (!ids.has(id)) this.selectedArrows.delete(id);
+    this.applyFilter();
     this.reroute();
+  }
+
+  // ----- filter, search hits ----------------------------------------------------------
+
+  get introductionMap(): ReadonlyMap<string, readonly string[]> {
+    return this.introductions;
+  }
+
+  /** Values worked out from the arrows rather than typed on cards (for the filter). */
+  filterExtras(): Extras {
+    return new Map([["introduces", this.introductions]]);
+  }
+
+  get filterActive(): boolean {
+    return [...this.filter.selection.values()].some((s) => s.size > 0);
+  }
+
+  setFilter(selection: Map<string, Set<string>>, matchAll: Set<string>): void {
+    this.filter = { selection, matchAll };
+    this.applyFilter();
+    this.notify();
+  }
+
+  /** Fade cards and groups the filter doesn't match (each group judged on its own
+   *  values), and count what's shown. */
+  private applyFilter(): void {
+    const active = this.filterActive;
+    const extras = this.filterExtras();
+    const counts = [0, 0, 0, 0];
+    this.dimmed.clear();
+    for (const c of this.state.cards) {
+      const ok = !active || filterMatches(c, this.filter.selection, this.filter.matchAll, extras);
+      if (!ok) this.dimmed.add(c.id);
+      const base = c.kind === KIND_GROUP ? 2 : 0;
+      counts[base]! += ok ? 1 : 0;
+      counts[base + 1]!++;
+    }
+    this.filterCounts = { cards_shown: counts[0]!, cards_total: counts[1]!, groups_shown: counts[2]!, groups_total: counts[3]! };
+  }
+
+  /** Collapsed groups show how many search matches are hidden inside them. */
+  setSearchHits(ids: Iterable<string>): void {
+    this.searchHits.clear();
+    for (const id of ids) {
+      const shown = this.structure.visibleEnd(id);
+      if (shown !== id) this.searchHits.set(shown, (this.searchHits.get(shown) ?? 0) + 1);
+    }
+    this.notify();
+  }
+
+  setFlash(id: string | null): void {
+    if (this.flash === id) return;
+    this.flash = id;
+    this.notify();
+  }
+
+  /** Unfold every collapsed group hiding one of `ids` (one undo step). True if any did. */
+  reveal(ids: Iterable<string>): boolean {
+    const hidden = new Set<string>();
+    for (const id of ids) for (const a of this.structure.ancestors(id)) if (this.card(a)?.collapsed) hidden.add(a);
+    if (!hidden.size) return false;
+    this.setCollapsed([...hidden], false);
+    return true;
+  }
+
+  /** Where a card sits, for telling apart cards with the same title ("" at the top level). */
+  titleContext(id: string): string {
+    const parent = this.structure.parentOf.get(id);
+    return parent === undefined ? "" : this.card(parent)?.title.trim() || "Untitled";
+  }
+
+  // ----- board-wide edits ------------------------------------------------------------------
+
+  /** Change display options (Board Options: one undo step). */
+  setDisplay(values: Partial<Display>): void {
+    this.commit({ ...this.state, display: cleanDisplay({ ...this.state.display, ...values }) });
+  }
+
+  /** Edit several cards at once (model.applyBulkEdit): one undo step; how many changed. */
+  bulkEdit(ids: Iterable<string>, edit: BulkEdit): number {
+    const set = new Set(ids);
+    const copies = this.state.cards.filter((c) => set.has(c.id)).map(copyCard);
+    const changed = new Set(applyBulkEdit(copies, edit).map((c) => c.id));
+    if (!changed.size) return 0;
+    const byId = new Map(copies.map((c) => [c.id, makeCard({ ...c })]));
+    let state: BoardState = { ...this.state, cards: this.state.cards.map((c) => (changed.has(c.id) ? byId.get(c.id)! : c)) };
+    const color = edit.color;
+    if (color && !(CARD_COLORS as readonly string[]).includes(color) && !state.custom_colors.includes(color)) {
+      state = { ...state, custom_colors: [...state.custom_colors, color] };
+    }
+    this.commit(state);
+    return changed.size;
+  }
+
+  /** Replace text in cards' titles, descriptions and notes (one undo step); how many
+   *  cards changed. `ids`: only those cards. */
+  replaceInCards(find: string, replacement: string, fields: readonly TextField[], matchCase: boolean,
+                 ids: Iterable<string> | null = null): number {
+    const only = ids === null ? null : new Set(ids);
+    const copies = this.state.cards.filter((c) => only === null || only.has(c.id)).map(copyCard);
+    const changed = new Map(replaceText(copies, find, replacement, fields, matchCase).map((c) => [c.id, c]));
+    if (!changed.size) return 0;
+    this.commit({ ...this.state, cards: this.state.cards.map((c) => changed.get(c.id) ?? c) });
+    return changed.size;
   }
 
   private reroute(): void {

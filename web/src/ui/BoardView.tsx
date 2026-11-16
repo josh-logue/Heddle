@@ -32,6 +32,7 @@ export function BoardView({ store, theme, measurer, host, minimapOpen, onToggleM
     const proxy: CanvasHost = {
       editCard: (id, isNew) => hostRef.current.editCard(id, isNew),
       editArrows: (ids) => hostRef.current.editArrows(ids),
+      editSeveral: () => hostRef.current.editSeveral(),
       confirm: (message) => hostRef.current.confirm(message),
       notice: (text) => hostRef.current.notice(text),
       snapToGrid: () => hostRef.current.snapToGrid(),

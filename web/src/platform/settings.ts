@@ -19,3 +19,18 @@ export function writeSetting(key: string, value: string): void {
     // (not remembered: nothing else to do)
   }
 }
+
+/** A remembered value stored as JSON (panel layout and the like); `fallback` if missing
+ *  or unreadable. */
+export function readJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(PREFIX + key);
+    return raw === null ? fallback : (JSON.parse(raw) as T);
+  } catch {
+    return fallback;
+  }
+}
+
+export function writeJson(key: string, value: unknown): void {
+  writeSetting(key, JSON.stringify(value));
+}

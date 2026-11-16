@@ -23,6 +23,7 @@ export const SEPARATOR: MenuItem = { label: "-" };
 export interface MenuActions {
   editCard(id: string): void;
   editArrows(ids: string[]): void;
+  editSeveral(): void;
   addCardAt(x: number, y: number, group?: string): void;
   startConnect(source: string): void;
   copy(): void;
@@ -75,8 +76,9 @@ export function buildMenu(store: BoardStore, hit: Hover, x: number, y: number, a
       );
       if (g.width > 0 && g.height > 0) items.push({ label: "Fit frame to cards", action: () => store.fitFrame(id) });
     }
+    items.push(SEPARATOR);
+    if (n > 1) items.push({ label: `Edit ${n} selected cards…`, keys: "Enter", action: act.editSeveral });
     items.push(
-      SEPARATOR,
       { label: `Copy${suffix}`, keys: "Ctrl+C", action: act.copy },
       { label: `Cut${suffix}`, keys: "Ctrl+X", action: act.cut },
       { label: `Duplicate${suffix}`, keys: "Ctrl+D", action: () => store.duplicate() },

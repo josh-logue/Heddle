@@ -61,14 +61,17 @@ test("folds every group and shows every card's details", async ({ page }) => {
   const view = page.getByText("View", { exact: true });
   await view.click();
   await page.getByRole("button", { name: /Collapse every group/ }).click();
+  await expect(page.getByRole("button", { name: /Expand every group/ })).toBeHidden(); // picking closes the menu
+  await view.click();
   await expect(page.getByRole("button", { name: /Expand every group/ })).toBeVisible();
-  await page.mouse.click(600, 500); // the menu closes
+  await page.mouse.click(600, 500); // so does a click elsewhere
   await expect(page.getByRole("button", { name: /Expand every group/ })).toBeHidden();
   await shot(page, "lantern-collapsed");
   await page.keyboard.press("Shift+C");
   await view.click();
   await expect(page.getByRole("button", { name: /Collapse every group/ })).toBeVisible();
   await page.getByRole("button", { name: /Show every card's details/ }).click();
+  await view.click();
   await expect(page.getByRole("button", { name: /Hide every card's details/ })).toBeVisible();
   await view.click();
   await shot(page, "lantern-details");
@@ -83,7 +86,8 @@ test("opens a board file, and says when a file isn't a board", async ({ page }) 
   await (await chooser).setFiles(fileURLToPath(new URL("../../examples/hollybank-garden.json", import.meta.url)));
   await expect(page.locator(".board-name")).toHaveText("hollybank-garden");
   const again = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Open…" }).click();
+  await page.getByText("File", { exact: true }).click();
+  await page.getByRole("button", { name: /^Open…/ }).click();
   await (await again).setFiles({ name: "notes.json", mimeType: "application/json", buffer: Buffer.from("{oops") });
   await expect(page.getByRole("alert")).toContainText("“notes.json” isn't a Heddle board");
 });

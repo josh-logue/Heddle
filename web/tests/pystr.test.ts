@@ -41,3 +41,17 @@ describe("Python string rules", () => {
     expect(compareKeys([0.5, 2], [0.5, 2])).toBe(0);
   });
 });
+
+describe("Go to Card ranking and natural sorting", async () => {
+  const { rank, compareNatural } = await import("../src/core/rank.ts");
+  it("ranks starts, word starts and anywhere", () => {
+    expect(rank("Warden Hall", "war")).toBe(0);
+    expect(rank("The Warden", "war")).toBe(1);
+    expect(rank("Night-watch", "watch")).toBe(1);
+    expect(rank("Stewardship", "war")).toBe(2);
+    expect(rank("Harbour", "war")).toBeNull();
+  });
+  it("sorts Card 2 before Card 10, ignoring case", () => {
+    expect(["card 10", "Card 2", "apple"].sort(compareNatural)).toEqual(["apple", "Card 2", "card 10"]);
+  });
+});

@@ -4,7 +4,7 @@
 
 import type { Display } from "../core/model.ts";
 import {
-  CORNER, HEADER_HEIGHT, LOD_TEXT, LOD_TITLE, PAD, PORT_RADIUS, STRAND_MARKS, TOGGLE_SIZE,
+  CORNER, DIMMED_OPACITY, HEADER_HEIGHT, LOD_TEXT, LOD_TITLE, PAD, PORT_RADIUS, STRAND_MARKS, TOGGLE_SIZE,
   foldRect, hasPort, paintOrder, portCenter, toggleRect, type CardBox, type Rect,
 } from "../board/metrics.ts";
 import { DASH_PATTERNS, LOD_OVERVIEW, type ArrowShape } from "../board/routing.ts";
@@ -129,10 +129,14 @@ function drawCard(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, displ
   const showText = lod >= LOD_TEXT;
   const color = b.card.color;
   if (lod < LOD_TITLE) {
+    ctx.save();
+    if (s.store.dimmed.has(b.card.id)) ctx.globalAlpha = DIMMED_OPACITY;
     drawOverview(ctx, b, t, lod, s.store.selected.has(b.card.id));
+    ctx.restore();
     return;
   }
   ctx.save();
+  if (s.store.dimmed.has(b.card.id)) ctx.globalAlpha = DIMMED_OPACITY; // filtered out
   ctx.translate(b.x, b.y);
   const path = roundRect(0, 0, b.w, b.h, CORNER);
   const hover = s.hover.card === b.card.id ? s.hover.part : undefined;
@@ -222,7 +226,7 @@ function drawCard(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, displ
   if (s.store.selected.has(b.card.id)) {
     stroke = t.selected;
     width = 2.5;
-  } else if (s.dropTarget === b.card.id) {
+  } else if (s.dropTarget === b.card.id || s.store.flash === b.card.id) {
     stroke = t.dark ? lighter(color, 130) : darker(color, 115);
     width = 2.5;
     dashed = true;
@@ -302,7 +306,9 @@ function drawHeader(ctx: CanvasRenderingContext2D, b: CardBox, s: DrawState, dis
   let right = b.w - 2.5 * PAD - TOGGLE_SIZE;
   const collapsed = b.isGroup && b.card.collapsed;
   if (b.isGroup && showCount && (display.show_group_count || collapsed)) {
-    const count = `${b.memberCount} card${b.memberCount !== 1 ? "s" : ""}`;
+    let count = `${b.memberCount} card${b.memberCount !== 1 ? "s" : ""}`;
+    const found = s.store.searchHits.get(b.card.id);
+    if (collapsed && found) count += ` · ${found} found`; // matches folded away inside
     const w = m.width(count, "small") + 8;
     ctx.fillStyle = withAlpha(fg, 190);
     drawCentred(ctx, m, { x: right - w, y: 0, w, h: HEADER_HEIGHT }, count, "small", "right");
@@ -385,8 +391,19 @@ function tracePath(ctx: CanvasRenderingContext2D, a: ArrowShape): void {
 }
 
 function drawArrow(ctx: CanvasRenderingContext2D, a: ArrowShape, s: DrawState, lod: number): void {
-  const t = s.theme;
   const selected = s.store.selectedArrows.has(a.conn.id);
+  const faded = s.store.dimmed.has(a.conn.source) || s.store.dimmed.has(a.conn.target);
+  ctx.save();
+  if (faded) ctx.globalAlpha = DIMMED_OPACITY;
+  try {
+    drawArrowShape(ctx, a, s, lod, selected);
+  } finally {
+    ctx.restore();
+  }
+}
+
+function drawArrowShape(ctx: CanvasRenderingContext2D, a: ArrowShape, s: DrawState, lod: number, selected: boolean): void {
+  const t = s.theme;
   const color = selected ? t.selected : arrowColor(a, t, s.hover.arrow === a.conn.id);
   if (lod < LOD_OVERVIEW) { // far zoomed out: a plain 1px line
     tracePath(ctx, a);
