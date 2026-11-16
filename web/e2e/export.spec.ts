@@ -30,7 +30,12 @@ async function fileMenu(page: Page, item: RegExp) {
 
 async function downloaded(page: Page, run: () => Promise<void>) {
   const [download] = await Promise.all([page.waitForEvent("download"), run()]);
-  return { name: download.suggestedFilename(), path: (await download.path())! };
+  let name = download.suggestedFilename();
+  // Playwright's WebKit on Linux (CI) reports spaces in a download's name as underscores,
+  // though the page asked for "Lantern Tide.md"; on Windows it keeps them. Chromium is
+  // still checked exactly.
+  if (page.context().browser()?.browserType().name() === "webkit") name = name.replace(/_/g, " ");
+  return { name, path: (await download.path())! };
 }
 
 test("exports the story as Markdown, remembering the choices", async ({ page }) => {
