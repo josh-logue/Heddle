@@ -34,14 +34,16 @@ async function retry<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Write a file whole or not at all: into `<file>.tmp`, then swapped in (as model.save_board). */
+/** Write a file whole or not at all: into `<file>.tmp`, then swapped in (as model.save_board).
+ *  Both steps are tried again while something holds a file briefly; a failure leaves the
+ *  file as it was and no temporary file behind. */
 export async function writeAtomic(file: string, data: string | Uint8Array): Promise<void> {
   const tmp = `${file}.tmp`;
-  await fs.writeFile(tmp, data);
   try {
+    await retry(() => fs.writeFile(tmp, data));
     await retry(() => fs.rename(tmp, file));
   } catch (e) {
-    await fs.rm(tmp, { force: true });
+    await fs.rm(tmp, { force: true }).catch(() => undefined); // (the write's error is the one to report)
     throw e;
   }
 }

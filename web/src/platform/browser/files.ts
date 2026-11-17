@@ -11,7 +11,7 @@ import type { HostFiles, PickedFile } from "../host.ts";
 export interface FileHandle extends FileRef {
   name: string;
   getFile(): Promise<File>;
-  createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void> }>;
+  createWritable(): Promise<{ write(data: string | Blob): Promise<void>; close(): Promise<void>; abort?(): Promise<void> }>;
   queryPermission?(opts: { mode: "read" | "readwrite" }): Promise<PermissionState>;
   requestPermission?(opts: { mode: "read" | "readwrite" }): Promise<PermissionState>;
   isSameEntry?(other: FileHandle): Promise<boolean>;
@@ -91,9 +91,21 @@ async function write(ref: FileRef, text: string, ask: boolean): Promise<void> {
   if (!(await permitted(h, "readwrite", ask))) {
     throw new NoPermissionError(`Heddle wasn't allowed to save to “${h.name}”. Use Save As to choose a file.`);
   }
+  await writeAll(h, text);
+}
+
+/** Write a whole file through its stream. The browser swaps the new contents in only on
+ *  close, so a failure part-way aborts the stream and the file is left as it was (an
+ *  unclosed stream would keep its temporary copy, and the file busy, until the page goes). */
+async function writeAll(h: FileHandle, data: string | Blob): Promise<void> {
   const out = await h.createWritable();
-  await out.write(text);
-  await out.close();
+  try {
+    await out.write(data);
+    await out.close();
+  } catch (e) {
+    await out.abort?.().catch(() => undefined);
+    throw e;
+  }
 }
 
 /** Save As's file choice: a handle, null if cancelled, or "download" where the browser
@@ -144,9 +156,7 @@ async function saveExport(data: string | Blob, fileName: string, type: string, d
     if (aborted(e)) return false;
     throw e;
   }
-  const out = await h.createWritable();
-  await out.write(data);
-  await out.close();
+  await writeAll(h, data);
   return true;
 }
 

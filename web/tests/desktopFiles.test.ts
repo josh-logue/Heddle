@@ -1,10 +1,10 @@
 // The desktop shell's files (desktop/files.ts), on a real temporary folder: backups in the
 // Python app's layout (heddle/backups.py), error.log in its format, safe writes, the
 // registry read, and strand pictures.
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, mkdirSync, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BACKUP_INTERVAL_MS, KEEP_BACKUPS, MAX_LOG_BYTES, appendLog, backupDirFor, listBackups, makeBackup, parseRegQuery,
   picturePath, pictureUrl, stamp, writeAtomic,
@@ -79,6 +79,41 @@ describe("files and the log", () => {
     writeFileSync(file, "old");
     await writeAtomic(file, "new");
     expect(readFileSync(file, "utf-8")).toBe("new");
+    expect(readdirSync(dir)).toEqual(["Board.json"]);
+  });
+
+  it("tries the temporary file again while something holds it briefly (OneDrive, a virus scanner)", async () => {
+    const file = path.join(dir, "Board.json");
+    writeFileSync(file, "old");
+    const real = fs.writeFile.bind(fs);
+    let failures = 1;
+    const spy = vi.spyOn(fs, "writeFile").mockImplementation(async (...args: Parameters<typeof fs.writeFile>) => {
+      if (failures-- > 0) throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+      return real(...args);
+    });
+    try {
+      await writeAtomic(file, "new");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(readFileSync(file, "utf-8")).toBe("new");
+    expect(readdirSync(dir)).toEqual(["Board.json"]);
+  });
+
+  it("a write that fails part-way leaves the file as it was and no temporary file", async () => {
+    const file = path.join(dir, "Board.json");
+    writeFileSync(file, "old");
+    const real = fs.writeFile.bind(fs);
+    const spy = vi.spyOn(fs, "writeFile").mockImplementation(async (target: Parameters<typeof fs.writeFile>[0]) => {
+      await real(target, "ne"); // part of it, then the disk is full
+      throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+    });
+    try {
+      await expect(writeAtomic(file, "new")).rejects.toThrow("ENOSPC");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(readFileSync(file, "utf-8")).toBe("old");
     expect(readdirSync(dir)).toEqual(["Board.json"]);
   });
 

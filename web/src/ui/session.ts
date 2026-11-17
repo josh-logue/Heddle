@@ -134,7 +134,9 @@ export class BoardSession {
       await this.backup(this.diskText, false);
       this.files.download(text, jsonName(this.name));
       this.saved(text, state);
+      this.status = `Downloaded ${time(this.now())}`; // (beside the board's name, as "Saved 14:05")
       this.host.notice(`Downloaded “${jsonName(this.name)}”. This browser can't save in place: each save downloads a new copy.`);
+      this.host.changed();
       return true;
     }
     const same = this.handle !== null && this.key && (await fileKey(this.db, target, baseName(target.name), this.now(), this.files.same)) === this.key;

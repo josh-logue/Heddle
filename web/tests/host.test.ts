@@ -170,6 +170,31 @@ describe("the app on a non-browser host", () => {
   });
 });
 
+describe("saving where the browser can only download", () => {
+  it("downloads a copy, says so beside the board's name, and marks it saved", async () => {
+    const host = new MemoryHost();
+    setHost(host);
+    const store = new BoardStore(parseBoard(BOARD, "Tracks.json", null).board, fakeMeasurer());
+    let changed = 0;
+    const s = new BoardSession(store, { name: "Tracks", handle: null, text: null },
+      { db: laterDb(host.storage()), locks: host.locks, files: host.files, backups: host.backups },
+      { notice: () => {}, askConflict: async () => "cancel", busy: () => false, autosaveOn: () => true, changed: () => void changed++ },
+      () => T0);
+    await s.start();
+    store.updateCard("a", { title: "Mabel" });
+    host.saves.push("download");
+    try {
+      expect(await s.save(true)).toBe(true);
+      expect(host.downloads.map(([name]) => name)).toEqual(["Tracks.json"]);
+      expect(store.modified).toBe(false);
+      expect(s.status).toMatch(/^Downloaded \d\d:\d\d$/);
+      expect(changed).toBeGreaterThan(0);
+    } finally {
+      await s.dispose(false);
+    }
+  });
+});
+
 describe("browser file handles", () => {
   /** A File System Access handle whose permission has lapsed ("prompt"). */
   function lapsed(granted: boolean) {
@@ -195,6 +220,24 @@ describe("browser file handles", () => {
     expect(save.asked).toEqual(["readwrite"]);
     const refused = lapsed(false);
     expect(await browserFiles.read(refused.h, true)).toBeNull();
+  });
+
+  it("a write that fails part-way aborts its stream (the file stays as it was), and says why", async () => {
+    const calls: string[] = [];
+    const h = {
+      name: "Tracks.json",
+      queryPermission: async () => "granted",
+      createWritable: async () => ({
+        write: async () => {
+          calls.push("write");
+          throw new DOMException("The disk is full", "QuotaExceededError");
+        },
+        close: async () => void calls.push("close"),
+        abort: async () => void calls.push("abort"),
+      }),
+    } as unknown as FileRef;
+    await expect(browserFiles.write(h, BOARD, false)).rejects.toThrow("The disk is full");
+    expect(calls).toEqual(["write", "abort"]);
   });
 });
 

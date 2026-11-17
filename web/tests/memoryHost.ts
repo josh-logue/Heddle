@@ -19,7 +19,8 @@ export const pathRef = (path: string): PathRef => ({ name: baseOf(path), path })
 export class MemoryHost implements Host {
   /** The "disk": path → text. */
   readonly disk = new Map<string, string>();
-  /** What the next Open and Save As dialogs answer (null: cancelled). */
+  /** What the next Open and Save As dialogs answer (null: cancelled; "download": a browser
+   *  that can only download a copy). */
   readonly opens: (string | null)[] = [];
   readonly saves: (string | null)[] = [];
   /** Paths this host may not write to without asking. */
@@ -69,7 +70,7 @@ export class MemoryHost implements Host {
     },
     pickSave: async () => {
       const path = this.saves.shift() ?? null;
-      return path === null ? null : pathRef(path);
+      return path === null || path === "download" ? path : pathRef(path);
     },
     download: (text, fileName) => void this.downloads.push([fileName, text]),
     same: async (a, b) => (a as PathRef).path === (b as PathRef).path,
