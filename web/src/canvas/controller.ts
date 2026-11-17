@@ -263,10 +263,10 @@ export class BoardCanvas {
     this.camera.height = Math.max(1, rect.height);
     this.canvas.width = Math.round(this.camera.width * dpr);
     this.canvas.height = Math.round(this.camera.height * dpr);
-    if (first) this.fit();
+    if (first) this.camera.fit(this.store ? boardExtent(this.store.boxes) : null);
     else this.camera.centerOn(cx, cy);
-    this.draw();
-    this.changed();
+    this.draw(); // now: resizing the canvas cleared it (and a redraw queued too would draw twice)
+    for (const fn of this.listeners) fn();
   }
 
   private draw(): void {
@@ -342,7 +342,7 @@ export class BoardCanvas {
   private hitAt(sx: number, sy: number): Hover {
     if (!this.store) return {};
     const [x, y] = this.camera.toScene(sx, sy);
-    return hitTest(this.store.boxes, this.store.arrows, this.store.state.display, x, y, this.camera.scale);
+    return hitTest(this.store.boxes, this.store.arrows, this.store.state.display, x, y, this.camera.scale, this.store.paintOrder());
   }
 
   private setHover(h: Hover): void {

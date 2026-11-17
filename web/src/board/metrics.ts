@@ -174,8 +174,10 @@ export class Structure {
 /** Lays out cards and fits groups: all of them, or one card and the groups around it. */
 export class Layouter {
   private readonly ctx: Ctx;
-  /** Plain cards laid out before, by card object (cards are replaced, never changed). */
-  private readonly cache = new WeakMap<CardData, { details: boolean; sx: number; sy: number; box: CardBox }>();
+  /** Plain cards laid out before, by id, with the card object each was laid out from
+   *  (cards are replaced, never changed, so a different object is compared field by field). */
+  private readonly cache = new Map<string, { src: CardData; details: boolean; sx: number; sy: number;
+    intro: readonly string[]; box: CardBox }>();
 
   constructor(input: LayoutInput, m: TextMeasurer, public structure = new Structure(input.cards)) {
     this.ctx = {
@@ -201,6 +203,9 @@ export class Layouter {
       box.visible = structure.visibleEnd(c.id) === c.id;
       out.set(c.id, box);
     }
+    if (this.cache.size > 2 * cards.length + 100) { // (cards deleted since)
+      for (const id of this.cache.keys()) if (!out.has(id)) this.cache.delete(id);
+    }
     return out;
   }
 
@@ -208,13 +213,16 @@ export class Layouter {
   private plain(c: CardData, boxes: Map<string, CardBox>): CardBox {
     const details = this.ctx.details.has(c.id);
     const [sx, sy] = this.ctx.shift.get(c.id) ?? [0, 0];
-    const hit = this.cache.get(c);
-    if (hit && hit.details === details && hit.sx === sx && hit.sy === sy && !hit.box.introduces.length
-        && !(this.ctx.introductions.get(c.id)?.length)) {
-      return { ...hit.box, x: c.x + sx, y: c.y + sy };
+    const intro = this.ctx.introductions.get(c.id) ?? [];
+    const hit = this.cache.get(c.id);
+    // A card dragged or nudged (or brought back by undo) is a new object that differs only
+    // in where it is: its text needn't be measured again.
+    if (hit && hit.details === details && hit.sx === sx && hit.sy === sy && sameStrings(hit.intro, intro)
+        && (hit.src === c || samePlaceless(hit.src, c))) {
+      return { ...hit.box, card: c, x: c.x + sx, y: c.y + sy };
     }
     const box = layoutCard(c, this.ctx, this.structure, boxes);
-    this.cache.set(c, { details, sx, sy, box: { ...box } });
+    this.cache.set(c.id, { src: c, details, sx, sy, intro: [...intro], box: { ...box } });
     return box;
   }
 
@@ -229,6 +237,16 @@ export class Layouter {
       boxes.set(cid, box);
     }
   }
+}
+
+const sameStrings = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((s, i) => s === b[i]);
+
+/** The same card apart from its position (a card's lists and objects are replaced when
+ *  they change, so they're compared as objects). */
+function samePlaceless(a: CardData, b: CardData): boolean {
+  const ka = Object.keys(a) as (keyof CardData)[];
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every((k) => k === "x" || k === "y" || a[k] === b[k]);
 }
 
 /** Lay out every card and fit every group. */

@@ -25,8 +25,8 @@ function partOf(b: CardBox, x: number, y: number, display: Display): Hover["part
 }
 
 export function hitTest(boxes: ReadonlyMap<string, CardBox>, arrows: readonly ArrowShape[], display: Display,
-                        x: number, y: number, scale: number): Hover {
-  const { groups, cards } = paintOrder(boxes);
+                        x: number, y: number, scale: number, order = paintOrder(boxes)): Hover {
+  const { groups, cards } = order;
   const onCard = (b: CardBox) => inRect(b, x, y) || (hasPort(b, display)
     && Math.hypot(x - portCenter(b)[0], y - portCenter(b)[1]) <= PORT_RADIUS + 3);
   for (let i = cards.length - 1; i >= 0; i--) {

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { DISPLAY_DEFAULTS, boardFromDict, makeCard, makeConnection, type CardData } from "../src/core/model.ts";
 import {
-  CARD_WIDTH, GROUP_MIN_WIDTH, GROUP_PAD, HEADER_HEIGHT, Structure, anchorRect, layoutBoard, paintOrder,
+  CARD_WIDTH, GROUP_MIN_WIDTH, GROUP_PAD, HEADER_HEIGHT, Layouter, Structure, anchorRect, layoutBoard, paintOrder,
 } from "../src/board/metrics.ts";
 import { ARROW_LEN, REVERSE_OFFSET, routeArrows } from "../src/board/routing.ts";
 import { elide, elideLines, fakeMeasurer, wrapLines } from "../src/board/text.ts";
@@ -118,6 +118,47 @@ describe("card layout", () => {
     const box = layoutBoard({ cards: board.cards, strands: board.strands, details: new Set(["s"]) }, m).get("s")!;
     expect(box.blocks.map((b) => b.lines.join(" "))).toEqual(["Keeper", "Age: 9"]);
     expect(box.tooltip).toBe("Character: Rowan");
+  });
+});
+
+describe("the layout cache", () => {
+  /** The fake measurer, counting how often text is measured (each card laid out measures). */
+  function counting() {
+    const inner = fakeMeasurer();
+    const count = { n: 0 };
+    return { count, m: { ...inner, width: (t: string, f: Parameters<typeof inner.width>[1]) => (count.n++, inner.width(t, f)) } };
+  }
+  const card = (over: Partial<CardData> = {}) => makeCard({ id: "a", title: "Rowan", description: "At the gate", ...over });
+
+  it("doesn't lay out a card again when only its position changed (a drag, an undo)", () => {
+    const { count, m: cm } = counting();
+    const c = card();
+    const lay = new Layouter({ cards: [c] }, cm);
+    const first = lay.all([c]).get("a")!;
+    count.n = 0;
+    const moved = { ...c, x: c.x + 50, y: c.y + 20 }; // a new object, as every move makes
+    const box = lay.all([moved]).get("a")!;
+    expect(count.n).toBe(0);
+    expect([box.x - first.x, box.y - first.y, box.h]).toEqual([50, 20, first.h]);
+    expect(box.card).toBe(moved);
+  });
+
+  it("lays it out again when anything else changed, or its introductions did", () => {
+    const { count, m: cm } = counting();
+    const c = card();
+    const intros = new Map<string, string[]>();
+    const lay = new Layouter({ cards: [c], introductions: intros, display: { ...DISPLAY_DEFAULTS, show_introductions: true } }, cm);
+    lay.all([c]);
+    count.n = 0;
+    const edited = { ...c, description: "word ".repeat(80) };
+    expect(lay.all([edited]).get("a")!.blocks[0]!.lines.length).toBe(6);
+    expect(count.n).toBeGreaterThan(0);
+    intros.set("a", ["Mabel"]);
+    expect(lay.all([edited]).get("a")!.introduces).toEqual(["Mabel"]);
+    count.n = 0;
+    intros.set("a", ["Mabel"]); // the same introductions in a new list (each refresh makes them)
+    expect(lay.all([edited]).get("a")!.introduces).toEqual(["Mabel"]);
+    expect(count.n).toBe(0);
   });
 });
 

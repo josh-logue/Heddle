@@ -35,12 +35,14 @@ export function CardListPanel({ store, onShow }: Props) {
     setOpts(next);
     writeJson("cardList", next);
   };
-  const version = store.version;
+  // Worked out again when the board or the filter changes (not on selection: the version
+  // counter bumps for that too).
+  const { state, filter } = store;
   const filterOn = store.filterActive;
   const rows = useMemo(() => cardListRows(store.storyGraph(), {
     sort: opts.sort, storyTools: store.state.display.story_tools, needle, fullText: opts.fullText,
     strandInfo: strandInfoMap(store), dimmed: filterOn ? store.dimmed : new Set(), hideDimmed: opts.hideDimmed,
-  }), [store, version, opts, needle, filterOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [store, state, filter, opts, needle, filterOn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Rows under a group folded in the list are left out.
   const shown = useMemo(() => {

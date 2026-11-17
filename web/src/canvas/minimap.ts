@@ -2,7 +2,7 @@
 // coloured blocks with a box around the part on screen. Click to jump, drag the box to
 // pan, scroll to zoom, double-click to fit.
 
-import { boardExtent, paintOrder, type Rect } from "../board/metrics.ts";
+import { boardExtent, type Rect } from "../board/metrics.ts";
 import { ZOOM_STEP } from "./camera.ts";
 import type { BoardCanvas } from "./controller.ts";
 import { withAlpha } from "./theme.ts";
@@ -19,10 +19,17 @@ export class Minimap {
   private drag: { offset: [number, number]; extent: Rect } | null = null;
   private readonly unsubscribe: () => void;
   private readonly cleanup: (() => void)[] = [];
+  private frame = 0;
 
   constructor(readonly canvas: HTMLCanvasElement, private readonly board: BoardCanvas) {
     this.ctx = canvas.getContext("2d")!;
-    this.unsubscribe = board.subscribe(() => this.draw());
+    // Once a frame however many pans, zooms and changes arrive in it.
+    this.unsubscribe = board.subscribe(() => {
+      this.frame ||= requestAnimationFrame(() => {
+        this.frame = 0;
+        this.draw();
+      });
+    });
     const on = (type: string, fn: (e: Event) => void, opts?: AddEventListenerOptions) => {
       canvas.addEventListener(type, fn, opts);
       this.cleanup.push(() => canvas.removeEventListener(type, fn, opts));
@@ -40,6 +47,7 @@ export class Minimap {
 
   destroy(): void {
     this.unsubscribe();
+    cancelAnimationFrame(this.frame);
     for (const fn of this.cleanup) fn();
   }
 
@@ -106,7 +114,7 @@ export class Minimap {
     ctx.beginPath();
     ctx.rect(INSET, INSET, cw - 2 * INSET, ch - 2 * INSET);
     ctx.clip();
-    const { groups, cards } = paintOrder(viewer.boxes);
+    const { groups, cards } = viewer.paintOrder();
     for (const b of [...groups, ...cards]) {
       const r = this.toMap(b, xf);
       if (b.isGroup) {

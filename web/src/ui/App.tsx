@@ -168,13 +168,22 @@ export function App() {
     if (import.meta.env.DEV) (window as unknown as { heddleCanvas?: BoardCanvas | null }).heddleCanvas = canvas;
   }, [canvas]);
 
+  // Pans and zooms only change the zoom shown (React skips the render when it's the same).
   useEffect(() => {
     if (!canvas) return;
-    return canvas.subscribe(() => {
-      setZoom(canvas.camera.scale);
-      setTick((n) => n + 1);
-    });
+    return canvas.subscribe(() => setZoom(canvas.camera.scale));
   }, [canvas]);
+
+  // Board changes re-render the toolbar and panels, but not during a drag or a burst of
+  // nudges: the drop (or the burst settling) records it, which renders. Straight away, not
+  // on the next frame: controls showing the store (the Filter panel's ticks) would
+  // otherwise spring back before the change reached them.
+  useEffect(() => {
+    if (!store) return;
+    return store.subscribe(() => {
+      if (!store.moving) setTick((n) => n + 1);
+    });
+  }, [store]);
 
   // Toolbar menus close on a click anywhere else.
   useEffect(() => {
@@ -658,7 +667,9 @@ export function App() {
     const index = at >= 0 ? (at + direction + ids.length) % ids.length : direction > 0 ? 0 : ids.length - 1;
     jumpTo(matches, index);
   }, [searchMatches, searchAt, jumpTo]);
-  const matchList = searchMatches();
+  // (for the "n of N" beside the box: worked out again only when the board changes)
+  const boardState = store?.state;
+  const matchList = useMemo(() => matchesFor(query), [matchesFor, query, boardState]); // eslint-disable-line react-hooks/exhaustive-deps
   const searchIndex = searchAt ? matchList.findIndex(([id]) => id === searchAt) + 1 : 0;
 
   // ----- strands ------------------------------------------------------------------------------

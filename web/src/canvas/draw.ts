@@ -5,7 +5,7 @@
 import type { Display } from "../core/model.ts";
 import {
   BADGE_SIZE, CORNER, DIMMED_OPACITY, HEADER_HEIGHT, LOD_TEXT, LOD_TITLE, PAD, PORT_RADIUS, STRAND_MARKS, TOGGLE_SIZE,
-  foldRect, hasPort, paintOrder, portCenter, toggleRect, type CardBox, type Rect,
+  foldRect, hasPort, portCenter, toggleRect, type CardBox, type Rect,
 } from "../board/metrics.ts";
 import { DASH_PATTERNS, LOD_OVERVIEW, type ArrowShape } from "../board/routing.ts";
 import { cssFont, elide, lineHeight, type FontKey, type TextMeasurer } from "../board/text.ts";
@@ -74,7 +74,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: DrawState): void {
   const only = s.exporting?.only ?? null;
 
   const lod = camera.scale;
-  const { groups, cards } = paintOrder(s.store.boxes);
+  const { groups, cards } = s.store.paintOrder();
   // What's being dragged is drawn above everything else until it's dropped.
   const lifted = s.lifted;
   const below = lifted ? cards.filter((c) => !lifted.has(c.card.id)) : cards;

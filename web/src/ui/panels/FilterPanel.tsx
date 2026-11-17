@@ -42,10 +42,10 @@ export function FilterPanel({ store, onMenu }: {
 }) {
   const [folded, setFolded] = useState<Set<string>>(new Set());
   const story = store.state.display.story_tools;
-  const version = store.version;
+  const state = store.state; // (the options change only with the board, not the selection)
   const options = useMemo(
     () => collectOptions(store.state.cards.filter((c) => c.kind !== KIND_STRAND), store.filterExtras()),
-    [store, version], // eslint-disable-line react-hooks/exhaustive-deps
+    [store, state], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const { selection, matchAll } = store.filter;
   const categories = CATEGORIES.filter((c) => c !== "introduces" || story);

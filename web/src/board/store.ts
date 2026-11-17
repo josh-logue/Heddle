@@ -20,7 +20,7 @@ import {
   type StrandInfo, copyRoute, routeIsBlank, routeKeyId, titleLabels,
 } from "../core/model.ts";
 import {
-  CARD_WIDTH, GROUP_MIN_BODY, GROUP_MIN_WIDTH, GROUP_PAD, Layouter, Structure, type CardBox, type Rect,
+  CARD_WIDTH, GROUP_MIN_BODY, GROUP_MIN_WIDTH, GROUP_PAD, Layouter, Structure, paintOrder, type CardBox, type Rect,
 } from "./metrics.ts";
 import { labelTexts, routeArrows, type ArrowShape } from "./routing.ts";
 import { lineHeight, type TextMeasurer } from "./text.ts";
@@ -253,6 +253,16 @@ export class BoardStore {
 
   card(id: string): CardData | undefined {
     return this.structure.byId.get(id);
+  }
+
+  private drawOrder: { version: number; value: ReturnType<typeof paintOrder> } | null = null;
+
+  /** The visible cards and groups in drawing order (metrics.paintOrder), worked out once
+   *  per change rather than on every frame and every pointer move. Every change to the
+   *  boxes notifies, which bumps the version. */
+  paintOrder(): ReturnType<typeof paintOrder> {
+    if (this.drawOrder?.version !== this.version) this.drawOrder = { version: this.version, value: paintOrder(this.boxes) };
+    return this.drawOrder.value;
   }
 
   storyGraph(): StoryGraph {
@@ -543,10 +553,17 @@ export class BoardStore {
   /** `state` with the cards in `roots` (and what they carry) moved by (dx, dy). A card
    *  moved by hand keeps where it's drawn: a make-room push becomes its own position. */
   movedBy(roots: readonly string[], dx: number, dy: number, base = this.state): BoardState {
+    return this.movedEach(roots.map((r): Move => [r, dx, dy]), base);
+  }
+
+  /** `base` with each root (and what it carries) moved by its own offset, in one pass
+   *  (moving every card of a big board is linear, not a search per card). */
+  private movedEach(moves: readonly Move[], base = this.state): BoardState {
+    const byId = new Map(base.cards.map((c) => [c.id, c]));
     const changes = new Map<string, Partial<CardData>>();
-    for (const root of roots) {
+    for (const [root, dx, dy] of moves) {
       for (const id of this.carried(root)) {
-        const c = base.cards.find((x) => x.id === id) ?? this.card(id);
+        const c = byId.get(id) ?? this.card(id);
         if (!c || changes.has(id)) continue;
         const [sx, sy] = this.shift.get(id) ?? [0, 0];
         this.shift.delete(id);
@@ -578,23 +595,23 @@ export class BoardStore {
   nudge(dx: number, dy: number, snap = false): boolean {
     const roots = this.moveRoots();
     if (!roots.length) return false;
-    let next = this.state;
-    for (const id of roots) {
+    return this.commit(this.movedEach(this.nudges(roots, dx, dy, snap))) || true;
+  }
+
+  /** Each root's nudge (with snap: to the next grid line that way). */
+  private nudges(roots: readonly string[], dx: number, dy: number, snap: boolean): Move[] {
+    return roots.map((id) => {
       const b = this.boxes.get(id)!;
-      const [mx, my] = snap ? [nextLine(b.x, dx) - b.x, nextLine(b.y, dy) - b.y] : [dx, dy];
-      next = this.movedBy([id], mx, my, next);
-    }
-    return this.commit(next) || true;
+      return snap ? [id, nextLine(b.x, dx) - b.x, nextLine(b.y, dy) - b.y] : [id, dx, dy];
+    });
   }
 
   /** The current board with each card's (or group frame's) top-left corner on the grid. */
   snappedState(roots: readonly string[]): BoardState {
-    let next = this.state;
-    for (const id of roots) {
+    return this.movedEach(roots.map((id) => {
       const b = this.boxes.get(id)!;
-      next = this.movedBy([id], snapped(b.x) - b.x, snapped(b.y) - b.y, next);
-    }
-    return next;
+      return [id, snapped(b.x) - b.x, snapped(b.y) - b.y];
+    }));
   }
 
   // ----- adding, editing and removing --------------------------------------------------
@@ -631,13 +648,7 @@ export class BoardStore {
   /** Move the selection without recording it yet: a burst of arrow-key nudges is
    *  recorded as one step (commit) when it settles. */
   nudgePreview(dx: number, dy: number, snap = false): void {
-    let next = this.state;
-    for (const id of this.moveRoots()) {
-      const b = this.boxes.get(id)!;
-      const [mx, my] = snap ? [nextLine(b.x, dx) - b.x, nextLine(b.y, dy) - b.y] : [dx, dy];
-      next = this.movedBy([id], mx, my, next);
-    }
-    this.preview(next);
+    this.preview(this.movedEach(this.nudges(this.moveRoots(), dx, dy, snap)));
   }
 
   /** Replace a card with edited data, and for a group set its members and maybe arrange
@@ -1039,11 +1050,11 @@ export class BoardStore {
     const ox = g.x + GROUP_PAD;
     const oy = g.y + g.headerH + GROUP_PAD;
     let next = this.replaceCards(new Map([[id, { width: 0, height: 0 }]])); // back to a snug fit
-    for (const m of members) {
+    next = this.movedEach(members.map((m) => {
       const [x, y] = placed.get(m)!;
       const b = this.boxes.get(m)!;
-      next = this.movedBy([m], ox + x - b.x, oy + y - b.y, next);
-    }
+      return [m, ox + x - b.x, oy + y - b.y];
+    }), next);
     this.state = next;
     this.refresh();
     const moves: Move[] = [];
