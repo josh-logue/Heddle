@@ -76,10 +76,10 @@ running. Set `HEDDLE_LOG_DIR` to use another folder.
 
 `web/` holds the browser version: TypeScript, React and a Canvas 2D board, built with Vite
 and published to GitHub Pages by `.github/workflows/web.yml`. It opens the same `.json`
-boards. Its core (`web/src/core`) is a port of the Python one, kept in step by shared
-fixtures: `web/fixtures/build_fixtures.py` records what the Python core answers for a set of
-boards, the TypeScript tests must give the same answers, and `tests/test_web_fixtures.py`
-fails when the fixtures are out of date. It needs [Node.js](https://nodejs.org/) 20 or later:
+boards. Its core (`web/src/core`) is a port of the Python one. `web/fixtures` holds the
+answers the Python core gave for a set of boards while it was ported; the TypeScript tests
+must still give them, and after a deliberate change `npm run fixtures` records the new ones.
+It needs [Node.js](https://nodejs.org/) 20 or later:
 
 ```powershell
 cd web
@@ -90,7 +90,7 @@ npx playwright install chromium webkit firefox   # once, for the browser tests
 npx playwright test               # browser tests in Chromium and WebKit (own dev server)
 npx playwright test -c playwright.offline.config.ts   # the built site, offline
 npm run help                      # after editing src/controls.md (the Help page)
-python fixtures/build_fixtures.py # after changing the Python core
+npm run fixtures                  # after a deliberate change to the core's answers
 npm run desktop                   # the desktop shell (Electron) on a fresh build
 npm run desktop:dev               # the desktop shell on the dev server (F12: developer tools)
 npm run test:desktop              # the desktop shell's tests (Windows)

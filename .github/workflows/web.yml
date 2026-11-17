@@ -1,6 +1,6 @@
 # Checks the web version (lint, type check, unit tests, build) and publishes it to
 # GitHub Pages at https://josh-logue.github.io/Heddle/.
-# Runs only when the web app, its workflow or the files it reads from the desktop app change.
+# Runs only when the web app, its workflow or the demo boards it bundles change.
 # Deploys from main and, while the port is under way, from the web branch. The Pages
 # environment must allow the web branch (Settings > Environments > github-pages).
 name: Web
@@ -10,13 +10,11 @@ on:
     branches: [main, web]
     paths:
       - "web/**"
-      - "heddle/model.py"
       - "examples/*.json"
       - ".github/workflows/web.yml"
   pull_request:
     paths:
       - "web/**"
-      - "heddle/model.py"
       - "examples/*.json"
       - ".github/workflows/web.yml"
   workflow_dispatch:

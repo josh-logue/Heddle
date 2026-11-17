@@ -22,6 +22,14 @@ describe("the web controls", () => {
     expect(readme.indexOf(CONTROLS_START)).toBeLessThan(readme.indexOf(CONTROLS_END));
   });
 
+  it("match whatever line endings the checkout has (Git on Windows writes CRLF)", () => {
+    const lf = readme.replace(/\r\n/g, "\n");
+    const crlf = lf.replace(/\n/g, "\r\n");
+    expect(readmeWithControls(crlf, controls)).toBe(crlf);
+    expect(readmeWithControls(lf, controls.replace(/\r?\n/g, "\r\n"))).toBe(lf);
+    expect(readmeWithControls(crlf, controls.replace(/\r?\n/g, "\r\n"))).toBe(crlf);
+  });
+
   it("escape a | inside a table cell, and mark bold and italic for the Help dialog", () => {
     expect(readmeSection("## S\n- **A**: x | y")).toContain("| A | x " + String.fromCharCode(92) + "| y |");
     expect(inlineRuns("Press **H** or *right-click*.")).toEqual([["Press ", ""], ["H", "b"], [" or ", ""], ["right-click", "i"], [".", ""]]);

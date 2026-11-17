@@ -20,6 +20,7 @@
     "test": "vitest run",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "help": "node scripts/help.ts",
+    "fixtures": "node scripts/fixtures.ts",
     "desktop": "npm run build && electron desktop/main.ts",
     "desktop:dev": "node desktop/dev.ts",
     "test:desktop": "playwright test -c playwright.desktop.config.ts",

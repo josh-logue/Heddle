@@ -10,7 +10,7 @@
 *.jpg binary
 *.ico binary
 
-# Generated for the web version (web/fixtures/build_fixtures.py, gen_casefold.py):
+# Generated for the web version (npm run fixtures, web/fixtures/gen_casefold.py):
 # collapsed in GitHub diffs.
 web/fixtures/**/*.json linguist-generated=true
 web/src/core/casefoldTable.ts linguist-generated=true

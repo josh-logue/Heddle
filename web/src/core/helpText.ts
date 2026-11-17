@@ -54,12 +54,18 @@ export function readmeSection(text: string): string {
   return out.join("\n").trimEnd() + "\n";
 }
 
-/** The README with its generated web section brought up to date. */
+/** The README with its generated web section brought up to date, in the README's own line
+ *  endings: Git on Windows (core.autocrlf) checks files out with CRLF, and an LF section in a
+ *  CRLF README would never match, nor would a CRLF controls.md parse. */
 export function readmeWithControls(readme: string, text: string): string {
-  const start = readme.indexOf(CONTROLS_START);
-  const end = readme.indexOf(CONTROLS_END);
+  const eol = readme.includes("\r\n") ? "\r\n" : "\n";
+  const lf = readme.replace(/\r\n/g, "\n");
+  const start = lf.indexOf(CONTROLS_START);
+  const end = lf.indexOf(CONTROLS_END);
   if (start < 0 || end < start) throw new Error("README.md has no web-controls:start / web-controls:end markers");
-  return readme.slice(0, start) + CONTROLS_START + "\n\n" + readmeSection(text) + "\n" + readme.slice(end);
+  const section = readmeSection(text.replace(/\r\n/g, "\n"));
+  const out = lf.slice(0, start) + CONTROLS_START + "\n\n" + section + "\n" + lf.slice(end);
+  return eol === "\n" ? out : out.replace(/\n/g, eol);
 }
 
 /** **bold** and *italic* runs of one line, for the Help dialog. */
