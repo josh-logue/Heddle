@@ -208,7 +208,7 @@ describe("the right-click menu", () => {
   const act: MenuActions = {
     editCard: () => {}, editArrows: () => {}, editSeveral: () => {}, addCardAt: () => {}, startConnect: () => {},
     copy: () => {}, cut: () => {}, pasteAt: () => {}, canPaste: () => false, deleteSelection: () => {}, notice: () => {},
-    read: () => {},
+    read: () => {}, addCardKeys: "N",
   };
   const labels = (items: MenuItem[]) => items.map((i) => i.label);
 

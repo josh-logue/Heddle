@@ -1,9 +1,10 @@
-// Unexpected errors: kept in the page's storage and reported, instead of vanishing
-// (heddle/error_log.py). The browser has no file to write, so the log lives in
-// localStorage and the "Copy error report" button puts it on the clipboard.
+// Unexpected errors: kept by the host and reported, instead of vanishing
+// (heddle/error_log.py). The browser has no file to write, so browserHost keeps the log in
+// localStorage, and the "Copy error report" button puts it on the clipboard.
 
-const KEY = "heddle.errors";
-export const MAX_ENTRIES = 50; // the oldest go first
+import { getHost } from "./host.ts";
+
+export const MAX_ENTRIES = 50; // the oldest go first (where the host keeps a list)
 export const MAX_ENTRY_CHARS = 8000;
 export const QUIET_MS = 10_000; // after a report, more errors this soon are only logged
 
@@ -12,34 +13,16 @@ export interface ErrorEntry {
   text: string;
 }
 
-function read(): ErrorEntry[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? "[]") as unknown;
-    return Array.isArray(raw) ? raw.filter((e): e is ErrorEntry => typeof e?.text === "string" && typeof e?.at === "number") : [];
-  } catch {
-    return [];
-  }
-}
-
 export function errorEntries(): ErrorEntry[] {
-  return read();
+  return getHost().errors.entries();
 }
 
 export function logError(text: string, at = Date.now()): void {
-  const entries = [...read(), { at, text: text.slice(0, MAX_ENTRY_CHARS) }].slice(-MAX_ENTRIES);
-  try {
-    localStorage.setItem(KEY, JSON.stringify(entries));
-  } catch {
-    // (storage full or blocked: the report dialog still shows this one)
-  }
+  getHost().errors.append({ at, text: text.slice(0, MAX_ENTRY_CHARS) });
 }
 
 export function clearErrors(): void {
-  try {
-    localStorage.removeItem(KEY);
-  } catch {
-    // (nothing to clear)
-  }
+  getHost().errors.clear();
 }
 
 /** An error, its stack, as text. */
@@ -49,8 +32,8 @@ export function describeError(e: unknown): string {
 }
 
 /** The text "Copy error report" copies: what's running, then the logged errors. */
-export function errorReport(entries = read(), agent = typeof navigator === "undefined" ? "" : navigator.userAgent): string {
-  const lines = ["Heddle (web) error report", `Browser: ${agent}`, `Page: ${typeof location === "undefined" ? "" : location.origin + location.pathname}`, ""];
+export function errorReport(entries = errorEntries(), about = getHost().errors.about()): string {
+  const lines = [...about, ""];
   if (!entries.length) lines.push("No errors logged.");
   for (const e of entries) lines.push(`===== ${new Date(e.at).toISOString()} =====`, e.text.trimEnd(), "");
   return lines.join("\n");

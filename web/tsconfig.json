@@ -20,5 +20,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "tests", "e2e", "e2e-offline", "scripts", "offline.ts", "vite.config.ts", "eslint.config.js", "playwright.config.ts", "playwright.offline.config.ts"]
+  "include": ["src", "tests", "e2e", "e2e-offline", "e2e-desktop", "desktop", "scripts", "offline.ts", "vite.config.ts", "eslint.config.js", "playwright.config.ts", "playwright.offline.config.ts", "playwright.desktop.config.ts"]
 }

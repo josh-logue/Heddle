@@ -1,14 +1,14 @@
 // One open board's saving: Save and Save As, autosave, drafts, backups and the check for
 // changes made to its file elsewhere (heddle/main_window.py's _write, _autosave, _backup,
-// _changed_on_disk and the recovery copies). No React here: App makes one per board.
+// _changed_on_disk and the recovery copies). No React here: App makes one per board, on
+// the host's files, storage and locks (tests pass an in-memory host).
 
 import type { BoardStore } from "../board/store.ts";
 import type { Db } from "../platform/db.ts";
+import { baseName, jsonName, type FileRef } from "../platform/files.ts";
+import type { HostBackups, HostFiles } from "../platform/host.ts";
 import {
-  baseName, download, jsonName, pickSaveHandle, readHandle, writeHandle, type FileHandle,
-} from "../platform/files.ts";
-import {
-  boardOpenElsewhere, cardCount, discardDraft, fileKey, listBackups, lockBoard, lockDraft, makeBackup, writeDraft,
+  boardOpenElsewhere, cardCount, discardDraft, fileKey, lockBoard, lockDraft, writeDraft,
   type Backup, type Locks,
 } from "../platform/safety.ts";
 
@@ -30,20 +30,17 @@ export interface SessionHost {
   changed(): void;
 }
 
-/** What the file side does: the browser's by default, fakes in tests. */
-export interface FileOps {
-  read(handle: FileHandle): Promise<string | null>;
-  write(handle: FileHandle, text: string, ask: boolean): Promise<void>;
-  /** A file to save as: a handle, null if cancelled, "download" where only that works. */
-  pick(suggestedName: string): Promise<FileHandle | null | "download">;
-  download(text: string, fileName: string): void;
+/** What a session uses of the host (host.ts): its files, storage and locks. */
+export interface SessionPlatform {
+  files: Pick<HostFiles, "read" | "write" | "pickSave" | "download" | "same">;
+  db: Db;
+  locks: Locks;
+  backups: HostBackups;
 }
-
-export const BROWSER_FILES: FileOps = { read: readHandle, write: writeHandle, pick: pickSaveHandle, download };
 
 export interface SessionStart {
   name: string;
-  handle: FileHandle | null;
+  handle: FileRef | null;
   /** The file's text as opened (null: no file yet). */
   text: string | null;
   /** Keep writing to this draft (a recovered one); else a fresh draft id. */
@@ -54,7 +51,7 @@ const time = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
 
 export class BoardSession {
   name: string;
-  handle: FileHandle | null;
+  handle: FileRef | null;
   /** What this tab last read from or wrote to the file (to spot changes made elsewhere). */
   diskText: string | null;
   readonly draftId: string;
@@ -74,9 +71,17 @@ export class BoardSession {
   private readonly unsubscribe: () => void;
   private disposed = false;
 
-  constructor(readonly store: BoardStore, start: SessionStart, private readonly db: Db, private readonly locks: Locks,
-              private readonly host: SessionHost, private readonly files: FileOps = BROWSER_FILES,
+  private readonly db: Db;
+  private readonly locks: Locks;
+  private readonly files: SessionPlatform["files"];
+  private readonly backupStore: HostBackups;
+
+  constructor(readonly store: BoardStore, start: SessionStart, platform: SessionPlatform, private readonly host: SessionHost,
               private readonly now: () => number = Date.now) {
+    this.db = platform.db;
+    this.locks = platform.locks;
+    this.files = platform.files;
+    this.backupStore = platform.backups;
     this.name = start.name;
     this.handle = start.handle;
     this.diskText = start.text;
@@ -94,7 +99,7 @@ export class BoardSession {
   }
 
   private async identify(): Promise<void> {
-    this.key = await fileKey(this.db, this.handle, this.name, this.now());
+    this.key = await fileKey(this.db, this.handle, this.name, this.now(), this.files.same);
     if (this.handle) {
       this.openElsewhere = await boardOpenElsewhere(this.locks, this.key);
       this.releases.push(await lockBoard(this.locks, this.key));
@@ -122,7 +127,7 @@ export class BoardSession {
   /** Save (Ctrl+S): back to the file where the browser allows it, else Save As. */
   async save(as = false): Promise<boolean> {
     if (!as && this.handle) return this.writeInPlace(this.handle, false, false);
-    const target = await this.files.pick(this.name);
+    const target = await this.files.pickSave(this.name);
     if (target === null) return false;
     const [text, state] = this.store.committedJson();
     if (target === "download") {
@@ -132,7 +137,7 @@ export class BoardSession {
       this.host.notice(`Downloaded “${jsonName(this.name)}”. This browser can't save in place: each save downloads a new copy.`);
       return true;
     }
-    const same = this.handle !== null && this.key && (await fileKey(this.db, target, baseName(target.name), this.now())) === this.key;
+    const same = this.handle !== null && this.key && (await fileKey(this.db, target, baseName(target.name), this.now(), this.files.same)) === this.key;
     if (!same) {
       for (const release of this.releases.splice(1)) release(); // the old file's lock
       this.handle = target;
@@ -146,7 +151,7 @@ export class BoardSession {
 
   /** Write the board to its file, backing up what's there first. Refuses to silently
    *  overwrite changes made elsewhere: Save asks; autosave (`quiet`) asks once it's done. */
-  private async writeInPlace(handle: FileHandle, quiet: boolean, overwrite: boolean): Promise<boolean> {
+  private async writeInPlace(handle: FileRef, quiet: boolean, overwrite: boolean): Promise<boolean> {
     const current = await this.files.read(handle);
     const changed = this.diskText !== null && current !== null && current !== this.diskText;
     if (changed && !overwrite) {
@@ -185,13 +190,13 @@ export class BoardSession {
     this.cancelTimer();
     this.store.markSaved(state);
     void this.dropDraft();
-    if (this.handle) void fileKey(this.db, this.handle, this.name, this.now()); // to the top of Open Recent
+    if (this.handle) void fileKey(this.db, this.handle, this.name, this.now(), this.files.same); // to the top of Open Recent
   }
 
   private async backup(text: string | null, force: boolean): Promise<void> {
     if (text === null) return;
     try {
-      await makeBackup(this.db, this.key, this.name, text, this.now(), force || !this.backedUp);
+      await this.backupStore.make(this.backupTarget, text, this.now(), force || !this.backedUp);
       this.backedUp = true;
     } catch (e) { // a failed backup mustn't stop the save itself
       this.host.notice(`Couldn't back up “${this.name}”: ${String(e)}`);
@@ -293,6 +298,10 @@ export class BoardSession {
   // ----- backups --------------------------------------------------------------------------
 
   backups(): Promise<[string, Backup][]> {
-    return listBackups(this.db, this.key);
+    return this.backupStore.list(this.backupTarget);
+  }
+
+  private get backupTarget() {
+    return { key: this.key, ref: this.handle, name: this.name };
   }
 }

@@ -14,6 +14,8 @@ import { Camera } from "../src/canvas/camera.ts";
 import { PORT_RADIUS } from "../src/board/metrics.ts";
 import { MAX_ENTRIES, clearErrors, errorEntries, errorReport, logError } from "../src/platform/errorLog.ts";
 import { getOption, setOption } from "../src/platform/settings.ts";
+import { browserAbout, browserHost } from "../src/platform/browserHost.ts";
+import { setHost } from "../src/platform/host.ts";
 
 const m = fakeMeasurer();
 
@@ -157,6 +159,7 @@ class MemoryStorage {
 describe("settings and the error log", () => {
   beforeEach(() => {
     (globalThis as { localStorage?: unknown }).localStorage = new MemoryStorage();
+    setHost(browserHost);
   });
   afterEach(() => {
     delete (globalThis as { localStorage?: unknown }).localStorage;
@@ -172,12 +175,12 @@ describe("settings and the error log", () => {
   });
 
   it("keeps the newest errors and builds a report", () => {
-    expect(errorReport([], "TestBrowser")).toContain("No errors logged.");
+    expect(errorReport([], browserAbout("TestBrowser"))).toContain("No errors logged.");
     for (let i = 0; i < MAX_ENTRIES + 5; i++) logError(`Error ${i}`, Date.UTC(2026, 10, 16, 9, 0, i));
     const entries = errorEntries();
     expect(entries.length).toBe(MAX_ENTRIES);
     expect(entries[0]!.text).toBe("Error 5");
-    const report = errorReport(entries, "TestBrowser");
+    const report = errorReport(entries, browserAbout("TestBrowser"));
     expect(report).toContain("Browser: TestBrowser");
     expect(report).toContain("===== 2026-11-16T09:00:54.000Z =====\nError 54");
     clearErrors();

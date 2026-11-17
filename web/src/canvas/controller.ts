@@ -20,6 +20,7 @@ import { hitTest } from "./hit.ts";
 import { LIGHT, darker, withAlpha, type Theme } from "./theme.ts";
 import { buildMenu, type MenuItem } from "./menus.ts";
 import { canPasteHere, readFragment, writeFragment } from "../platform/clipboard.ts";
+import { matchesKey, type KeyProfile } from "../platform/host.ts";
 
 /** What a strand dragged from the Strands panel carries (ui/panels/StrandsPanel.tsx). */
 export const STRAND_MIME = "application/x-heddle-strand";
@@ -51,6 +52,8 @@ export interface CanvasHost {
   chooseThread(): void;
   /** Settings: the plain wheel zooms (and Ctrl+wheel scrolls). */
   wheelZooms(): boolean;
+  /** The host's keys for Add card and Character thread (they differ in a browser). */
+  keys(): KeyProfile;
 }
 
 type Listener = () => void;
@@ -673,6 +676,7 @@ export class BoardCanvas {
       deleteSelection: () => void this.deleteSelection(),
       notice: (text) => this.host.notice(text),
       read: (id) => this.host.read(id),
+      addCardKeys: this.host.keys().addCard.label,
     });
     this.host.contextMenu(items, e.clientX, e.clientY);
   }
@@ -804,7 +808,7 @@ export class BoardCanvas {
     } else if (ctrl && !e.shiftKey && e.code === "KeyA") {
       e.preventDefault();
       store.selectAll();
-    } else if (!ctrl && !e.altKey && !e.shiftKey && e.code === "KeyN") {
+    } else if (matchesKey(this.host.keys().addCard, e)) {
       e.preventDefault();
       const [x, y] = this.newCardPoint();
       const card = store.addCard(x, y, this.host.snapToGrid());
@@ -828,8 +832,8 @@ export class BoardCanvas {
       e.preventDefault();
       const notice = store.toggleOutside();
       if (notice) this.host.notice(notice);
-    } else if (!ctrl && !e.altKey && !e.shiftKey && e.code === "KeyT" && store.state.display.story_tools) {
-      e.preventDefault(); // (Ctrl+T on the desktop: the browser keeps that one)
+    } else if (matchesKey(this.host.keys().thread, e) && store.state.display.story_tools) {
+      e.preventDefault(); // (Ctrl+T on the desktop: a browser keeps that one, so there it's T)
       this.host.chooseThread();
     } else if (!ctrl && !e.altKey && !e.shiftKey && e.code === "KeyC" && store.selected.size) {
       e.preventDefault();

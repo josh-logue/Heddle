@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import controls from "../controls.md?raw";
 import { inlineRuns, parseControls } from "../core/helpText.ts";
 import { casefold } from "../core/pystr.ts";
+import { getHost } from "../platform/host.ts";
 import { Dialog } from "./Dialog.tsx";
 
 function Rich({ text }: { text: string }) {
@@ -10,7 +11,7 @@ function Rich({ text }: { text: string }) {
 
 /** Help (F1): the controls from src/controls.md, with a box to find one. */
 export function HelpDialog({ onClose }: { onClose: () => void }) {
-  const sections = useMemo(() => parseControls(controls), []);
+  const sections = useMemo(() => parseControls(controls, getHost().kind), []); // (the desktop's or the browser's)
   const [find, setFind] = useState("");
   const needle = casefold(find.trim());
   const shown = sections

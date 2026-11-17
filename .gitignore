@@ -16,6 +16,7 @@ dist/
 node_modules/
 web/test-results/
 web/playwright-report/
+web/release/
 
 # Editors, Claude Code and Windows/OneDrive clutter
 .claude/

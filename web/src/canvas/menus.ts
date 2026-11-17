@@ -33,6 +33,8 @@ export interface MenuActions {
   notice(text: string): void;
   /** Open the Path Reader at a card. */
   read(id: string): void;
+  /** Add card's key, as shown (the host's: "N" in a browser). */
+  addCardKeys: string;
 }
 
 const STYLE_LABELS: Record<string, string> = { solid: "Solid", dashed: "Dashed", dotted: "Dotted" };
@@ -166,7 +168,7 @@ export function buildMenu(store: BoardStore, hit: Hover, x: number, y: number, a
     ];
   }
   return [
-    { label: "Add card here", keys: "N", action: () => act.addCardAt(x, y) },
+    { label: "Add card here", keys: act.addCardKeys, action: () => act.addCardAt(x, y) },
     SEPARATOR,
     { label: "Paste here", keys: "Ctrl+V", action: () => act.pasteAt(x, y), disabled: !act.canPaste() },
     { label: "Select all", keys: "Ctrl+A", action: () => store.selectAll() },

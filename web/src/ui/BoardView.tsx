@@ -40,6 +40,7 @@ export function BoardView({ store, theme, measurer, host, minimapOpen, onToggleM
       read: (id) => hostRef.current.read(id),
       chooseThread: () => hostRef.current.chooseThread(),
       wheelZooms: () => hostRef.current.wheelZooms(),
+      keys: () => hostRef.current.keys(),
     };
     const board = new BoardCanvas(canvasRef.current!, measurer, tooltipRef.current!, proxy);
     boardRef.current = board;

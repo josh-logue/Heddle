@@ -81,8 +81,9 @@ export function loadImageOptions(): ImageOptions & { format: ImageFormat } {
 }
 
 /** Scope, format, PNG scale, background, theme, and whether to keep the fading. */
-export function ExportImageDialog({ hasSelection, onClose, onExport }: {
-  hasSelection: boolean; onClose: () => void; onExport: (options: ImageOptions, format: ImageFormat) => void;
+/** `pdfByPrint`: a browser makes a PDF through its Print dialog; the desktop saves one. */
+export function ExportImageDialog({ hasSelection, pdfByPrint = true, onClose, onExport }: {
+  hasSelection: boolean; pdfByPrint?: boolean; onClose: () => void; onExport: (options: ImageOptions, format: ImageFormat) => void;
 }) {
   const [opt, setOpt] = useState(loadImageOptions);
   const [format, setFormat] = useState<ImageFormat>(opt.format);
@@ -92,7 +93,7 @@ export function ExportImageDialog({ hasSelection, onClose, onExport }: {
     </label>
   );
   return (
-    <Dialog title="Export board as image" okLabel={format === "pdf" ? "Print…" : "Export…"} onCancel={onClose} onOk={() => {
+    <Dialog title="Export board as image" okLabel={format === "pdf" && pdfByPrint ? "Print…" : "Export…"} onCancel={onClose} onOk={() => {
       writeJson("exportImage", { ...opt, format, selectionOnly: false });
       onExport({ ...opt, format: format === "pdf" ? "svg" : format }, format);
     }}>
@@ -106,7 +107,7 @@ export function ExportImageDialog({ hasSelection, onClose, onExport }: {
         <Radios name="Format" value={format} onChange={setFormat} choices={[
           ["png", "PNG image", true],
           ["svg", "SVG drawing (sharp at any size)", true],
-          ["pdf", "PDF: opens the browser's Print, then choose Save as PDF", true],
+          ["pdf", pdfByPrint ? "PDF: opens the browser's Print, then choose Save as PDF" : "PDF document (one page, sharp at any size)", true],
         ]} />
       </div>
       <div className="field">

@@ -7,11 +7,13 @@
 // - A backup is a board file's contents just before they're overwritten: the first save
 //   of each session, then at most every 5 minutes, and always before overwriting changes
 //   made elsewhere. The newest 20 are kept per board.
-// - Files: the board files opened or saved in Chrome and Edge (their handles), so they can
-//   be told apart, reopened (Open Recent) and spotted open in another tab.
+// - Files: the board files opened or saved (the host's references to them: handles in
+//   Chrome and Edge), so they can be told apart, reopened (Open Recent) and spotted open in
+//   another tab.
+// Pure logic over the host's storage and locks: no browser APIs here.
 
-import { askToPersist, type Db } from "./db.ts";
-import type { FileHandle } from "./files.ts";
+import type { Db } from "./db.ts";
+import type { FileRef, HostBackups } from "./host.ts";
 
 export const KEEP_BACKUPS = 20;
 export const BACKUP_INTERVAL_MS = 5 * 60_000;
@@ -52,23 +54,6 @@ export class MemoryLocks implements Locks {
   }
 }
 
-type LockManager = {
-  request(name: string, options: { mode: "shared" | "exclusive" }, cb: () => Promise<void>): Promise<void>;
-  query(): Promise<{ held?: { name?: string }[] }>;
-};
-
-/** The browser's Web Locks, or none (then nothing counts as held). */
-export function browserLocks(): Locks {
-  const locks = (navigator as Navigator & { locks?: LockManager }).locks;
-  if (!locks) return { hold: async () => () => {}, held: async () => false };
-  return {
-    hold: (name, shared = false) => new Promise((acquired) => {
-      void locks.request(name, { mode: shared ? "shared" : "exclusive" }, () => new Promise<void>((release) => acquired(release)));
-    }),
-    held: async (name) => ((await locks.query()).held ?? []).some((l) => l.name === name),
-  };
-}
-
 const draftLock = (id: string) => `heddle-draft:${id}`;
 const boardLock = (key: string) => `heddle-board:${key}`;
 
@@ -83,13 +68,13 @@ export interface Draft {
   at: number;
   cards: number;
   /** The file it came from, where the browser can save back to one. */
-  handle?: FileHandle | null;
+  handle?: FileRef | null;
   /** That file's text as last read or written here (to spot changes made since). */
   disk?: string | null;
 }
 
 export async function writeDraft(db: Db, draft: Draft): Promise<void> {
-  askToPersist();
+  db.persist?.();
   await db.put("drafts", draft.id, draft);
 }
 
@@ -141,10 +126,18 @@ export async function makeBackup(db: Db, file: string, name: string, text: strin
   if (newest && newest.text === text && newest.at <= now) return null; // nothing new to keep
   const seq = existing.filter(([, b]) => b.at === now).length;
   const key = `${file}\u0001${now}\u0001${seq}`;
-  askToPersist();
+  db.persist?.();
   await db.put("backups", key, { file, name, text, at: now, seq, cards: cardCount(text) } satisfies Backup);
   for (const [old] of (await listBackups(db, file)).slice(keep)) await db.delete("backups", old);
   return key;
+}
+
+/** Backups kept in a Db (a browser's, and tests'), under each board's file key. */
+export function dbBackups(db: () => Promise<Db>): HostBackups {
+  return {
+    make: async (target, text, now, force) => void (await makeBackup(await db(), target.key, target.name, text, now, force)),
+    list: async (target) => listBackups(await db(), target.key),
+  };
 }
 
 /** How many cards a board's text has (null if it isn't readable). */
@@ -177,22 +170,20 @@ export function describeTime(at: number, now = Date.now()): string {
 export interface FileEntry {
   key: string;
   name: string;
-  handle: FileHandle;
+  handle: FileRef;
   /** Last opened or saved (ms). */
   at: number;
 }
 
-/** Can two handles be compared (Chrome and Edge's isSameEntry)? */
-type Comparable = FileHandle & { isSameEntry?(other: FileHandle): Promise<boolean> };
-
 /** A stable key for a board file: the same file always gets the same key, whatever it's
  *  called, so backups and the other-tab check follow it. A board without a file (a
  *  download-only browser) is known by its name. Recorded as recently used. */
-export async function fileKey(db: Db, handle: FileHandle | null, name: string, now: number): Promise<string> {
+export async function fileKey(db: Db, handle: FileRef | null, name: string, now: number,
+                              same: (a: FileRef, b: FileRef) => Promise<boolean> = async (a, b) => a === b): Promise<string> {
   if (!handle) return `name:${name}`;
   let found: FileEntry | undefined;
   for (const [, e] of await db.all<FileEntry>("files")) {
-    if (await sameFile(e.handle, handle)) {
+    if (await same(e.handle, handle)) {
       found = e;
       break;
     }
@@ -205,15 +196,6 @@ export async function fileKey(db: Db, handle: FileHandle | null, name: string, n
   }
   await pruneRecent(db);
   return key;
-}
-
-async function sameFile(a: FileHandle, b: FileHandle): Promise<boolean> {
-  if (a === b) return true;
-  try {
-    return (await (a as Comparable).isSameEntry?.(b)) ?? false;
-  } catch {
-    return false;
-  }
 }
 
 /** The recently used board files, newest first. */

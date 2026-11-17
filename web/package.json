@@ -1,9 +1,12 @@
 {
   "name": "heddle-web",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Heddle in the browser: map branching and converging story paths.",
+  "description": "Heddle: map branching and converging story paths.",
+  "author": "Joshua",
+  "homepage": "https://github.com/josh-logue/Heddle",
+  "main": "desktop/main.ts",
   "license": "MIT",
   "engines": {
     "node": ">=20"
@@ -16,7 +19,12 @@
     "lint": "eslint .",
     "test": "vitest run",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
-    "help": "node scripts/help.ts"
+    "help": "node scripts/help.ts",
+    "desktop": "npm run build && electron desktop/main.ts",
+    "desktop:dev": "node desktop/dev.ts",
+    "test:desktop": "playwright test -c playwright.desktop.config.ts",
+    "package": "npm run build && electron-builder --win --publish never",
+    "test:packaged": "node desktop/test-packaged.ts"
   },
   "dependencies": {
     "react": "^19.3.1",
@@ -29,6 +37,8 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
+    "electron": "45.3.3",
+    "electron-builder": "26.18.0",
     "eslint": "^10.15.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.14.0",

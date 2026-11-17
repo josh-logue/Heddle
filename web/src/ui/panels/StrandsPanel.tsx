@@ -24,6 +24,8 @@ export interface StrandActions {
   applyFields(kind: StrandKind, name: string): void;
   selectCards(ids: string[]): void;
   addToBoard(kind: StrandKind, name: string): void;
+  /** A strand's picture ready to show, or null where it can't be (a browser; a missing file). */
+  picture(picture: string): Promise<string | null>;
 }
 
 type Picked = { kind: StrandKind; key: string } | null;
@@ -196,12 +198,28 @@ function StrandDetails({ store, kind, name, act }: { store: BoardStore; kind: St
                     }} />
         ))}
       </div>
-      {info?.picture && <p className="muted small-note" title={info.picture}>Picture: {info.picture} (shown in the desktop app)</p>}
+      {info?.picture && <StrandPicture picture={info.picture} load={act.picture} />}
       {info && (
         <button type="button" onClick={() => store.setStrandInfo(makeStrandInfo({ kind, name }))}>Clear details</button>
       )}
     </div>
   );
+}
+
+/** The strand's picture where the host can show it (the desktop app); else its path. */
+function StrandPicture({ picture, load }: { picture: string; load: (picture: string) => Promise<string | null> }) {
+  const [shown, setShown] = useState<{ picture: string; url: string | null } | null>(null);
+  useEffect(() => {
+    let live = true;
+    void load(picture).then((url) => live && setShown({ picture, url }), () => live && setShown({ picture, url: null }));
+    return () => {
+      live = false;
+    };
+  }, [picture, load]);
+  const url = shown?.picture === picture ? shown.url : null;
+  return url
+    ? <figure className="strand-picture"><img src={url} alt={`Picture: ${picture}`} title={picture} /></figure>
+    : <p className="muted small-note" title={picture}>Picture: {picture} (shown in the desktop app)</p>;
 }
 
 function FieldRow({ name, value, first, last, onChange, onRemove, onMove }: {

@@ -91,10 +91,27 @@ npx playwright test               # browser tests in Chromium and WebKit (own de
 npx playwright test -c playwright.offline.config.ts   # the built site, offline
 npm run help                      # after editing src/controls.md (the Help page)
 python fixtures/build_fixtures.py # after changing the Python core
+npm run desktop                   # the desktop shell (Electron) on a fresh build
+npm run desktop:dev               # the desktop shell on the dev server (F12: developer tools)
+npm run test:desktop              # the desktop shell's tests (Windows)
+npm run package                   # the installer and portable zip, into web/release/
+npm run test:packaged             # the desktop tests against the packaged app
 ```
 
 Firefox runs in CI; locally add it with `HEDDLE_BROWSERS=chromium,webkit,firefox` (on
 Windows, Playwright's Firefox needs the Microsoft Visual C++ runtime).
+
+The desktop shell (`web/desktop/`) shows the same app in its own window. Its Windows
+installer (one click, just for you, no admin) and a portable zip come from
+`.github/workflows/desktop.yml`: pushing a tag like `v0.2.0` builds them and makes a draft
+GitHub Release. They're unsigned, so Windows SmartScreen warns the first time ("More info"
+→ "Run anyway"). The installer adds Heddle to a .json file's "Open with" menu without
+making it the default app for .json. The shell opens and saves board files in place
+through the usual Windows dialogs and shares the Python app's backups and error log (`%LOCALAPPDATA%\Heddle\backups` and `\logs`), so each
+app's backups appear in the other's Restore. Its settings, drafts and Open Recent are kept
+in `%APPDATA%\Heddle`. On its first run it copies in the Python app's settings and recent
+boards. Everything the app needs from where it runs goes through one interface,
+`web/src/platform/host.ts`, with a browser version and a desktop version.
 
 ### Web version controls
 

@@ -79,6 +79,25 @@ test("folds every group and shows every card's details", async ({ page }) => {
   await shot(page, "lantern-details");
 });
 
+test("opening another board over unsaved changes asks once, before the file is chosen", async ({ page }) => {
+  await page.addInitScript(() => delete (window as { showOpenFilePicker?: unknown }).showOpenFilePicker);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Start an empty board" }).click();
+  await page.getByRole("button", { name: "Add card" }).click();
+  const editor = page.getByRole("dialog", { name: "New card" });
+  await editor.getByLabel("Title").fill("Greta");
+  await editor.getByRole("button", { name: "OK" }).click();
+  await expect(page.locator(".board-name")).toHaveText("● Untitled");
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByText("File", { exact: true }).click();
+  await page.getByRole("button", { name: /^Open…/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Discard changes" }).click();
+  await (await chooser).setFiles(fileURLToPath(new URL("../../examples/hollybank-garden.json", import.meta.url)));
+  await page.waitForTimeout(300);
+  await expect(page.getByRole("dialog")).toHaveCount(0); // (not asked a second time)
+  await expect(page.locator(".board-name")).toHaveText("hollybank-garden");
+});
+
 test("opens a board file, and says when a file isn't a board", async ({ page }) => {
   // Without the File System Access API (as in Firefox and Safari): a plain file input.
   await page.addInitScript(() => delete (window as { showOpenFilePicker?: unknown }).showOpenFilePicker);

@@ -6,11 +6,12 @@ import { typing } from "../canvas/controller.ts";
 import { canvasMeasurer } from "../canvas/measure.ts";
 import { DARK, LIGHT } from "../canvas/theme.ts";
 import {
-  BoardFileError, canSaveInPlace, parseBoard, permitted, pickBoard, readBoardFile, saveFile, type FileHandle, type OpenedBoard,
+  BoardFileError, FileGoneError, parseBoard, readBoardFile, type FileRef, type OpenedBoard,
 } from "../platform/files.ts";
-import { laterDb, openDb, MemoryDb, type Db } from "../platform/db.ts";
+import { laterDb } from "../platform/db.ts";
+import { getHost, matchesKey } from "../platform/host.ts";
 import {
-  browserLocks, describeTime, discardDraft, forgetFile, orphanDrafts, recentFiles, type Backup, type Draft, type FileEntry,
+  describeTime, discardDraft, forgetFile, orphanDrafts, recentFiles, type Backup, type Draft, type FileEntry,
 } from "../platform/safety.ts";
 import { BoardSession, type ConflictChoice } from "./session.ts";
 import { RestoreDialog } from "./SafetyDialogs.tsx";
@@ -21,7 +22,6 @@ import { HelpDialog } from "./HelpDialog.tsx";
 import { ExportImageDialog, ExportTextDialog, type ImageFormat, type TextScope } from "./ExportDialogs.tsx";
 import { exportRoute, exportText, type TextOptions } from "../core/exportText.ts";
 import { renderPng, renderSvg, type ImageOptions } from "../canvas/exportImage.ts";
-import { printSvg } from "../platform/print.ts";
 import { describeCounts, searchCards } from "../core/filters.ts";
 import { Sidebar, type PanelDef, type Side } from "./panels/Sidebar.tsx";
 import { CardPanel } from "./panels/CardPanel.tsx";
@@ -109,6 +109,8 @@ const DEFAULT_LAYOUT: PanelLayout = { open: [], side: {}, active: {}, width: { l
 const SEARCH_FLASH_MS = 700; // how long a search match's outline flashes
 
 export function App() {
+  /** Where the app runs: the browser, or the desktop shell (W9). Chosen once at startup. */
+  const platform = useMemo(() => getHost(), []);
   const measurer = useMemo(() => canvasMeasurer(), []);
   const [shown, setShown] = useState<Shown | null>(null);
   const [error, setError] = useState("");
@@ -131,9 +133,8 @@ export function App() {
   const [autosave, setAutosave] = useState(() => readSetting("autosave", "on", ["on", "off"]) === "on");
   const autosaveRef = useRef(autosave);
   const [recent, setRecent] = useState<FileEntry[]>([]);
-  const dbRef = useRef<Promise<Db> | null>(null);
-  const getDb = useCallback(() => (dbRef.current ??= openDb().catch(() => new MemoryDb())), []);
-  const locks = useMemo(() => browserLocks(), []);
+  const getDb = useCallback(() => platform.storage(), [platform]);
+  const locks = platform.locks;
   const modalRef = useRef<Modal | null>(null);
   const [, setTick] = useState(0); // re-render after board changes (undo state, modified)
   const [layout, setLayout] = useState<PanelLayout>(() => ({ ...DEFAULT_LAYOUT, ...readJson<Partial<PanelLayout>>("panels", {}) }));
@@ -174,29 +175,6 @@ export function App() {
       setTick((n) => n + 1);
     });
   }, [canvas]);
-
-  // Leaving with unsaved changes: the browser asks (its own wording).
-  useEffect(() => {
-    const before = (e: BeforeUnloadEvent) => {
-      if (shownRef.current?.store.modified) e.preventDefault();
-    };
-    // Hidden or closing with unsaved changes: keep a draft, offered next time if the tab
-    // doesn't come back (the browser may not finish writing it as the tab closes).
-    const hidden = () => {
-      if (document.visibilityState === "hidden" && shownRef.current?.store.modified) void shownRef.current.session.keepDraft();
-    };
-    const leaving = () => {
-      if (shownRef.current?.store.modified) void shownRef.current.session.keepDraft();
-    };
-    window.addEventListener("beforeunload", before);
-    document.addEventListener("visibilitychange", hidden);
-    window.addEventListener("pagehide", leaving);
-    return () => {
-      window.removeEventListener("beforeunload", before);
-      document.removeEventListener("visibilitychange", hidden);
-      window.removeEventListener("pagehide", leaving);
-    };
-  }, []);
 
   // Toolbar menus close on a click anywhere else.
   useEffect(() => {
@@ -242,15 +220,15 @@ export function App() {
   const sessionHost = useMemo(() => ({
     notice: (text: string) => setNotice(text),
     askConflict: (name: string) => ask<ConflictChoice>("File changed on disk",
-      `“${name}” was changed outside this tab since you opened or last saved it, for example on another computer `
-      + "or in another tab.\n\nOverwrite it with your version? The version in the file is backed up first "
+      `“${name}” was changed outside this ${platform.words.holder} since you opened or last saved it, for example on another computer `
+      + `or in another ${platform.words.holder}.\n\nOverwrite it with your version? The version in the file is backed up first `
       + "(File → Restore from backup…). Or save yours as a separate file.",
       [{ label: "Overwrite", value: "overwrite" }, { label: "Save as…", value: "save_as", primary: true }, { label: "Cancel", value: "cancel" }],
       "cancel"),
     busy: () => modalRef.current !== null && modalRef.current.kind !== "menu",
     autosaveOn: () => autosaveRef.current,
     changed: () => setTick((n) => n + 1),
-  }), [ask]);
+  }), [ask, platform]);
 
   /** Show a board. The board it replaces (already confirmed) loses its draft. `recovered`:
    *  a draft brought back, which stays unsaved and keeps writing to the same draft. */
@@ -270,17 +248,18 @@ export function App() {
     const session = new BoardSession(store, {
       name: opened.name, handle: opened.handle, text: recovered ? recovered.disk ?? null : opened.text ?? null,
       draftId: recovered?.id,
-    }, db, locks, sessionHost);
+    }, { db, locks, files: platform.files, backups: platform.backups }, sessionHost);
     setShown({ store, session, notes });
     setQuery("");
     setSearchAt(null);
     void session.start().then(async () => {
       if (session.openElsewhere) {
-        setNotice(`“${session.name}” is also open in another tab. Saving in one tab can overwrite changes made in the other.`);
+        const holder = platform.words.holder;
+        setNotice(`“${session.name}” is also open in another ${holder}. Saving in one ${holder} can overwrite changes made in the other.`);
       }
       if (session.handle) setRecent(await recentFiles(db));
     });
-  }, [measurer, getDb, locks, sessionHost]);
+  }, [measurer, getDb, locks, sessionHost, platform]);
 
   const setDemoInUrl = (id: string | null) => {
     const url = new URL(window.location.href);
@@ -307,34 +286,57 @@ export function App() {
     }
   }, [mayDiscard, showDemo]);
 
+  /** Nothing shown, or an untitled, unchanged, empty board: opening a board may use this
+   *  window (the desktop: one board per window). */
+  const isBlank = useCallback(() => {
+    const s = shownRef.current;
+    return !s || (!s.session.handle && !s.store.modified && !s.store.state.cards.length);
+  }, []);
+
+  /** May this window show the board (null: a new one)? Always in a browser. The desktop
+   *  brings forward the window that has it, or opens it in a new window unless this one
+   *  is blank. */
+  const routeHere = useCallback(async (ref: FileRef | null) =>
+    !platform.windows || (await platform.windows.route(ref, isBlank())) === "here", [platform, isBlank]);
+
   const openFile = useCallback(async (file: File) => {
-    if (!(await mayDiscard())) return;
+    const ref = platform.files.refFor(file); // (the desktop can save back to it)
     try {
-      show(await readBoardFile(file));
+      if (ref && !(await routeHere(ref))) return;
+      if (!(await mayDiscard())) return;
+      show(await readBoardFile(file, ref));
       setDemoInUrl(null);
     } catch (e) {
       setError(e instanceof BoardFileError ? e.message : `Couldn't open “${file.name}”: ${String(e)}`);
     }
-  }, [mayDiscard, show]);
+  }, [mayDiscard, show, platform, routeHere]);
 
   const open = useCallback(async () => {
-    if (!(await mayDiscard())) return;
+    // (a browser asks before the file dialog; the desktop never replaces a board here)
+    if (!platform.windows && !(await mayDiscard())) return;
     try {
-      const opened = await pickBoard();
-      if (opened) {
-        show(opened);
+      const picked = await platform.files.pickBoard();
+      // (the desktop opens it here only in a blank window: nothing to discard)
+      if (picked && (await routeHere(picked.ref))) {
+        show(parseBoard(picked.text, picked.fileName, picked.ref));
         setDemoInUrl(null);
       }
     } catch (e) {
       setError(e instanceof BoardFileError ? e.message : `Couldn't open the board: ${String(e)}`);
     }
-  }, [mayDiscard, show]);
+  }, [mayDiscard, show, platform, routeHere]);
 
   const newBoard = useCallback(async () => {
+    try {
+      if (!(await routeHere(null))) return; // (the desktop: a new window)
+    } catch (e) {
+      setError(`Couldn't open a new window: ${String(e)}`);
+      return;
+    }
     if (!(await mayDiscard())) return;
     show({ board: makeBoard(), name: "Untitled", handle: null, text: null });
     setDemoInUrl(null);
-  }, [mayDiscard, show]);
+  }, [mayDiscard, show, routeHere]);
 
   const save = useCallback(async (as = false) => {
     const s = shownRef.current;
@@ -348,6 +350,31 @@ export function App() {
     }
   }, [getDb]);
 
+  // Leaving (or hiding the page) with unsaved changes: the host asks and keeps a draft.
+  // Closing a desktop window asks here: Save / Don't save / Cancel.
+  useEffect(() => platform.onLeave({
+    unsaved: () => shownRef.current?.store.modified ?? false,
+    keepDraft: () => void shownRef.current?.session.keepDraft(),
+    askToClose: async () => {
+      const s = shownRef.current;
+      if (!s?.store.modified) return true;
+      const choice = await ask("Save changes?", `“${s.session.name}” has changes that aren't saved.\n\nSave them before closing?`,
+        [{ label: "Save", value: "save", primary: true }, { label: "Don't save", value: "discard" }, { label: "Cancel", value: "cancel" }],
+        "cancel");
+      if (choice === "save") {
+        await save();
+        return !shownRef.current?.store.modified; // (not if Save As was cancelled or failed)
+      }
+      if (choice === "discard") await s.session.dispose(true); // (and its draft)
+      return choice === "discard";
+    },
+  }), [platform, ask, save]);
+
+  // The desktop: what this window shows, so a board opens in one window only.
+  const shownFile = shown?.session.handle ?? null;
+  const blankNow = !shown || (!shownFile && !modified && !shown.store.state.cards.length);
+  useEffect(() => platform.windows?.report(shownFile, blankNow), [platform, shownFile, blankNow]);
+
   const toggleAutosave = useCallback((on: boolean) => {
     autosaveRef.current = on;
     setAutosave(on);
@@ -358,16 +385,18 @@ export function App() {
 
   /** Open Recent: a board file used before (Chrome and Edge), asking to read it again. */
   const openRecent = useCallback(async (entry: FileEntry) => {
-    if (!(await mayDiscard())) return;
     try {
-      if (!(await permitted(entry.handle, "read", true))) {
+      if (!(await routeHere(entry.handle))) return;
+      if (!(await mayDiscard())) return;
+      const text = await platform.files.reopen(entry.handle);
+      if (text === null) {
         setError(`Heddle wasn't allowed to open “${entry.name}”.`);
         return;
       }
-      show(await readBoardFile(await entry.handle.getFile(), entry.handle));
+      show(parseBoard(text, entry.handle.name, entry.handle));
       setDemoInUrl(null);
     } catch (e) {
-      if (e instanceof DOMException && e.name === "NotFoundError") {
+      if (e instanceof FileGoneError) {
         setError(`“${entry.name}” can't be found any more: it was moved, renamed or deleted.`);
         const db = await getDb();
         await forgetFile(db, entry.key);
@@ -376,7 +405,7 @@ export function App() {
         setError(e instanceof BoardFileError ? e.message : `Couldn't open “${entry.name}”: ${String(e)}`);
       }
     }
-  }, [mayDiscard, show, getDb]);
+  }, [mayDiscard, show, getDb, platform, routeHere]);
 
   const restoreBackup = useCallback(async () => {
     const s = shownRef.current;
@@ -398,15 +427,39 @@ export function App() {
   // directly (they can't drive the browser's file picker; they use its private files).
   useEffect(() => {
     if (!import.meta.env.DEV) return;
-    const w = window as unknown as { heddleSession?: BoardSession | null; heddleOpen?: (h: FileHandle) => Promise<void> };
+    const w = window as unknown as { heddleSession?: BoardSession | null; heddleOpen?: (h: FileRef) => Promise<void> };
     w.heddleSession = shown?.session ?? null;
     w.heddleOpen = async (h) => {
-      if (await mayDiscard()) show(await readBoardFile(await h.getFile(), h));
+      if (!(await mayDiscard())) return;
+      const text = await platform.files.reopen(h);
+      if (text === null) throw new Error(`Not allowed to read “${h.name}”`);
+      show(parseBoard(text, h.name, h));
     };
-  }, [shown, mayDiscard, show]);
+  }, [shown, mayDiscard, show, platform]);
+
+  // The desktop: the board this window was opened for, and any handed over later (a
+  // second launch with a board, into a blank window).
+  const openedForWindow = useRef(false);
+  useEffect(() => platform.windows?.onOpen((picked) => {
+    openedForWindow.current = true;
+    void (async () => {
+      if (!(await mayDiscard())) return;
+      if (!picked) { // (File → New in another window)
+        show({ board: makeBoard(), name: "Untitled", handle: null, text: null });
+        return;
+      }
+      try {
+        show(parseBoard(picked.text, picked.fileName, picked.ref));
+        setDemoInUrl(null);
+      } catch (e) {
+        setError(e instanceof BoardFileError ? e.message : `Couldn't open “${picked.fileName}”: ${String(e)}`);
+      }
+    })();
+  }), [platform, mayDiscard, show]);
 
   // On opening the page: a board whose tab closed without saving it is offered back
   // (the newest; older ones wait for next time), as the desktop offers its recovery copies.
+  // The desktop offers it in its first window only, unless that opened a board.
   useEffect(() => {
     let cancelled = false;
     void getDb().then(async (db) => {
@@ -414,10 +467,11 @@ export function App() {
       const found = await orphanDrafts(db, locks);
       const draft = found[0];
       if (cancelled || !draft || shownRef.current?.store.modified) return;
+      if (openedForWindow.current || platform.windows?.first === false) return;
       const more = found.length > 1 ? `\n\n(${found.length - 1} older unsaved board${found.length > 2 ? "s" : ""} will be offered next time.)` : "";
       const when = describeTime(draft.at).replace(/^Today, /, "today at ").replace(/^Yesterday, /, "yesterday at ");
       const choice = await ask("Recover unsaved board",
-        `“${draft.name}” wasn't saved before its tab closed.\n\nIt was last kept ${when} and has ${draft.cards} card${draft.cards === 1 ? "" : "s"}. Recover it?${more}`,
+        `“${draft.name}” wasn't saved before its ${platform.words.holder} closed.\n\nIt was last kept ${when} and has ${draft.cards} card${draft.cards === 1 ? "" : "s"}. Recover it?${more}`,
         [{ label: "Recover", value: "recover", primary: true }, { label: "Delete", value: "delete" }, { label: "Not now", value: "later" }],
         "later");
       if (choice === "delete") await discardDraft(db, draft.id);
@@ -432,7 +486,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [getDb, locks, ask, show]);
+  }, [getDb, locks, ask, show, platform]);
 
   // A link such as ?demo=lantern-tide opens that demo straight away.
   useEffect(() => {
@@ -629,7 +683,8 @@ export function App() {
     if (!store) return;
     let opened: OpenedBoard | null;
     try {
-      opened = await pickBoard();
+      const picked = await platform.files.pickBoard();
+      opened = picked && parseBoard(picked.text, picked.fileName, picked.ref);
     } catch (e) {
       setError(e instanceof BoardFileError ? e.message : `Couldn't read the board: ${String(e)}`);
       return;
@@ -658,11 +713,15 @@ export function App() {
         setNotice(`Imported ${added} strand${added !== 1 ? "s" : ""} or color${added !== 1 ? "s" : ""} from “${name}”`);
       },
     });
-  }, [store]);
+  }, [store, platform]);
 
   /** Cards picked in the Card List: select them and bring them into view. A card folded in a
    *  collapsed group selects that group, unless `unfold`, which opens it and hands the
    *  keyboard to the board. */
+  /** A strand's picture, found from the board's file (relative paths), where the host can show it. */
+  const boardFile = shown?.session.handle ?? null;
+  const strandPicture = useCallback((picture: string) => platform.picture(picture, boardFile), [platform, boardFile]);
+
   const showListed = useCallback((ids: string[], unfold: boolean) => {
     if (!store || !canvas) return;
     if (unfold) store.reveal(ids);
@@ -678,13 +737,13 @@ export function App() {
   /** Save an exported file and say where it went. */
   const saveExport = useCallback(async (data: string | Blob, fileName: string, type: string, description: string, extra = "") => {
     try {
-      const done = await saveFile(data, fileName, type, description);
+      const done = await platform.files.saveExport(data, fileName, type, description);
       if (done === false) return;
       setNotice(`${done === "downloaded" ? "Downloaded" : "Exported"} “${fileName}”.${extra}`);
     } catch (e) {
       setError(`Couldn't export “${fileName}”: ${String(e)}`);
     }
-  }, []);
+  }, [platform]);
 
   /** File → Export story as text: the board, the selection or the route being read. */
   const runTextExport = useCallback((scope: TextScope, opts: TextOptions) => {
@@ -698,7 +757,7 @@ export function App() {
     void saveExport(text, `${title}.md`, "text/markdown", "Markdown");
   }, [reader, saveExport]);
 
-  /** File → Export board as image: PNG, SVG, or the SVG printed (Save as PDF). */
+  /** File → Export board as image: PNG, SVG, or PDF (a browser prints the SVG: Save as PDF). */
   const runImageExport = useCallback(async (opts: ImageOptions, format: ImageFormat) => {
     const s = shownRef.current;
     if (!s) return;
@@ -714,15 +773,20 @@ export function App() {
       }
       const svg = renderSvg(s.store, look, measurer, opts);
       if (!svg) return setNotice(nothing);
-      if (format === "pdf") printSvg(svg, s.session.name);
+      if (format === "pdf") {
+        if ((await platform.pdf(svg, s.session.name)) === "saved") setNotice(`Exported “${s.session.name}.pdf”.`);
+      }
       else await saveExport(svg, `${s.session.name}.svg`, "image/svg+xml", "SVG drawing");
     } catch (e) {
       setError(`Couldn't export the board: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }, [theme, measurer, saveExport]);
+  }, [theme, measurer, saveExport, platform]);
+
+  const addCardRef = useRef(() => {});
 
   // App-wide keys (the canvas handles its own while it has focus).
   useEffect(() => {
+    const keys = platform.keys;
     const key = (e: KeyboardEvent) => {
       if (modal) return; // a dialog is open: it has the keyboard
       const ctrl = e.ctrlKey || e.metaKey;
@@ -779,6 +843,14 @@ export function App() {
       } else if (ctrl && !e.shiftKey && e.code === "KeyR" && store) {
         e.preventDefault(); // (the browser's reload key)
         renameStrand();
+      } else if (!e.defaultPrevented && keys.addCard.ctrl && matchesKey(keys.addCard, e) && store) {
+        // The desktop's Ctrl+Shift+N and Ctrl+T work anywhere in the window (the board
+        // handles them itself when it has the keyboard; a browser's N and T are board keys).
+        e.preventDefault();
+        addCardRef.current();
+      } else if (!e.defaultPrevented && keys.thread.ctrl && matchesKey(keys.thread, e) && store?.state.display.story_tools) {
+        e.preventDefault();
+        chooseThread();
       } else if (typing(e)) {
         return;
       } else if (ctrl && !e.shiftKey && e.code === "KeyZ") {
@@ -790,7 +862,7 @@ export function App() {
       } else if (ctrl && e.key === "0") {
         e.preventDefault();
         canvas?.resetZoom();
-      } else if (ctrl && e.key === "1") {
+      } else if (matchesKey(platform.keys.fit, e)) {
         e.preventDefault(); // (most browsers keep Ctrl+1 for switching tabs)
         canvas?.fit();
       } else if (!ctrl && !e.altKey && e.shiftKey && e.code === "KeyD") {
@@ -801,7 +873,7 @@ export function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [canvas, modal, save, open, undo, redo, toggleAllDetails, toggleAllCollapsed, store, searchStep, showPanel, renameStrand, readFrom]);
+  }, [canvas, modal, save, open, undo, redo, toggleAllDetails, toggleAllCollapsed, store, searchStep, showPanel, renameStrand, readFrom, platform, chooseThread]);
 
   const host = useMemo<CanvasHost>(() => ({
     editCard: (id, isNew) => setModal({ kind: "card", id, isNew }),
@@ -814,7 +886,8 @@ export function App() {
     read: (id) => readFrom(id),
     chooseThread,
     wheelZooms: () => optionsRef.current.wheel_zooms,
-  }), [confirm, snap, readFrom, chooseThread]);
+    keys: () => platform.keys,
+  }), [confirm, snap, readFrom, chooseThread, platform]);
 
   const closeMenu = useCallback(() => {
     setModal((m) => (m?.kind === "menu" ? null : m));
@@ -854,6 +927,9 @@ export function App() {
     canvas.reveal(card.id);
     setModal({ kind: "card", id: card.id, isNew: true });
   };
+  useEffect(() => {
+    addCardRef.current = addCard;
+  });
 
   const panelDefs: Record<string, PanelDef> = store ? {
     card: { id: "card", title: "Card", render: () => (
@@ -865,6 +941,7 @@ export function App() {
     cardList: { id: "cardList", title: "Card List", render: () => <CardListPanel store={store} onShow={showListed} /> },
     strands: { id: "strands", title: "Strands", render: () => (
       <StrandsPanel store={store} act={{
+        picture: strandPicture,
         rename: (k, v) => renameStrand(k, v),
         removeUnused,
         applyFields: (k, v) => setModal({ kind: "applyFields", strandKind: k, source: v }),
@@ -935,15 +1012,17 @@ export function App() {
             {store && (
               <>
                 <button type="button" onClick={() => void save()}>Save<kbd>Ctrl+S</kbd>
-                  <span className="muted">{canSaveInPlace() ? "Back to its file" : "Downloads the board as a .json file"}</span></button>
+                  <span className="muted">{platform.files.canSaveInPlace() ? "Back to its file" : "Downloads the board as a .json file"}</span></button>
                 <button type="button" onClick={() => void save(true)}>Save as…<kbd>Ctrl+Shift+S</kbd><span className="muted">To a new file</span></button>
                 <button type="button" onClick={() => void restoreBackup()}>Restore from backup…<span className="muted">An earlier version of this board</span></button>
                 <button type="button" onClick={() => void importStrands()}>Import strands…<span className="muted">Another board's strands and colours, no cards</span></button>
                 <button type="button" onClick={() => setModal({ kind: "exportText" })}>Export story as text…<span className="muted">The cards in story order, as Markdown</span></button>
-                <button type="button" onClick={() => setModal({ kind: "exportImage" })}>Export board as image…<span className="muted">PNG, SVG, or print to PDF</span></button>
+                <button type="button" onClick={() => setModal({ kind: "exportImage" })}>Export board as image…<span className="muted">{platform.kind === "browser" ? "PNG, SVG, or print to PDF" : "PNG, SVG or PDF"}</span></button>
               </>
             )}
-            <label className="menu-check" title="A minute after a change: saved to the board's file where this browser can, otherwise kept as a draft in the browser">
+            <label className="menu-check" title={platform.words.holder === "window"
+              ? "A minute after a change: saved to the board's file (an untitled board is kept as a draft)"
+              : "A minute after a change: saved to the board's file where this browser can, otherwise kept as a draft in the browser"}>
               <input type="checkbox" checked={autosave} onChange={(e) => toggleAutosave(e.target.checked)} /> Autosave
             </label>
             <hr />
@@ -959,11 +1038,11 @@ export function App() {
         {store && (
           <>
             <button type="button" onClick={() => void save()}
-                    title={canSaveInPlace() ? "Save (Ctrl+S)" : "Save: downloads the board as a .json file (Ctrl+S)"}>Save</button>
+                    title={platform.files.canSaveInPlace() ? "Save (Ctrl+S)" : "Save: downloads the board as a .json file (Ctrl+S)"}>Save</button>
             <span className="sep" />
             <button type="button" className="icon" onClick={undo} disabled={!store.history.canUndo()} title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
             <button type="button" className="icon" onClick={redo} disabled={!store.history.canRedo()} title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
-            <button type="button" onClick={addCard} title="Add a card (N, or double-click the canvas)">Add card</button>
+            <button type="button" onClick={addCard} title={`Add a card (${platform.keys.addCard.label}, or double-click the canvas)`}>Add card</button>
           </>
         )}
         {shown && <span className="board-name" title={shown.session.name}>{modified ? "● " : ""}{shown.session.name}</span>}
@@ -987,7 +1066,7 @@ export function App() {
               <button type="button" onClick={() => renameStrand()}>Rename strand…<kbd>Ctrl+R</kbd></button>
               <button type="button" onClick={removeUnused}>Remove unused strands…</button>
               <hr />
-              <button type="button" onClick={() => setModal({ kind: "settings" })}>Settings…<kbd>Ctrl+,</kbd><span className="muted">For this browser, not saved with the board</span></button>
+              <button type="button" onClick={() => setModal({ kind: "settings" })}>Settings…<kbd>Ctrl+,</kbd><span className="muted">For {platform.words.here}, not saved with the board</span></button>
             </div>
           </details>
         )}
@@ -1044,7 +1123,7 @@ export function App() {
                     <button type="button" title="Walk through the story from the selected card in the Path Reader"
                             onClick={() => readFrom()}>Read from selected card<kbd>Ctrl+Shift+R</kbd></button>
                     <button type="button" title="Light up every card featuring a character, numbered in story order"
-                            onClick={chooseThread}>Character thread…<kbd>T</kbd></button>
+                            onClick={chooseThread}>Character thread…<kbd>{platform.keys.thread.label}</kbd></button>
                   </>
                 )}
                 {store.highlight && <button type="button" onClick={() => store.clearHighlight()}>Clear highlight<kbd>Esc</kbd></button>}
@@ -1216,7 +1295,7 @@ export function App() {
                           }} />
       )}
       {store && modal?.kind === "exportImage" && (
-        <ExportImageDialog hasSelection={store.selected.size > 0} onClose={closeModal} onExport={(opts, format) => {
+        <ExportImageDialog hasSelection={store.selected.size > 0} pdfByPrint={platform.kind === "browser"} onClose={closeModal} onExport={(opts, format) => {
           closeModal();
           void runImageExport(opts, format);
         }} />

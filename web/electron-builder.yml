@@ -1,0 +1,44 @@
+# Packaging the desktop shell (W9f): npm run package -> release/
+#   Heddle Setup <version>.exe   one-click installer, just for this user (no admin), with a
+#                                Start menu entry and Heddle under .json's "Open with"
+#   Heddle-<version>-win.zip     the same app, unzipped and run from anywhere
+# Unsigned: Windows SmartScreen warns the first time. The app is the built site (dist/)
+# plus the shell's own files; Electron runs its TypeScript directly.
+appId: io.github.josh-logue.heddle
+productName: Heddle
+copyright: Copyright (c) 2026 Joshua (MIT License)
+directories:
+  output: release
+  buildResources: desktop/installer
+files:
+  - package.json
+  - dist/**
+  - "!dist/**/*.map"
+  - desktop/main.ts
+  - desktop/ipc.ts
+  - desktop/files.ts
+  - desktop/place.ts
+  - desktop/pdf.ts
+  - desktop/windows.ts
+  - desktop/preload.cjs
+  - src/platform/bridge.ts
+  - src/core/pystr.ts
+  - src/core/casefoldTable.ts
+  # (tests/packaging.test.ts checks every file the shell imports is listed here)
+  # (the site is already bundled: no node_modules at run time)
+  - "!node_modules/**"
+# The interface is English: Chromium's other languages would add ~40 MB.
+electronLanguages:
+  - en-US
+  - en-GB
+win:
+  target:
+    - nsis
+    - zip
+  icon: public/icon-512.png
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+  include: desktop/installer/installer.nsh
+  shortcutName: Heddle

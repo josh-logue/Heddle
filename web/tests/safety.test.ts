@@ -6,13 +6,13 @@ import { boardFromDict } from "../src/core/model.ts";
 import { BoardStore } from "../src/board/store.ts";
 import { fakeMeasurer } from "../src/board/text.ts";
 import { MemoryDb } from "../src/platform/db.ts";
-import type { FileHandle } from "../src/platform/files.ts";
+import type { FileRef } from "../src/platform/files.ts";
 import {
-  BACKUP_INTERVAL_MS, MemoryLocks, cardCount, describeTime, discardDraft, fileKey, listBackups, lockDraft, makeBackup,
+  BACKUP_INTERVAL_MS, MemoryLocks, cardCount, dbBackups, describeTime, discardDraft, fileKey, listBackups, lockDraft, makeBackup,
   orphanDrafts, recentFiles, writeDraft,
 } from "../src/platform/safety.ts";
 import {
-  AUTOSAVE_BUSY_RETRY_MS, AUTOSAVE_MS, BoardSession, type ConflictChoice, type FileOps, type SessionHost,
+  AUTOSAVE_BUSY_RETRY_MS, AUTOSAVE_MS, BoardSession, type ConflictChoice, type SessionHost, type SessionPlatform,
 } from "../src/ui/session.ts";
 
 const MIN = 60_000;
@@ -70,30 +70,34 @@ describe("drafts and recovery", () => {
 });
 
 /** A file the session can read and write, which "someone else" can change too. */
-class FakeFiles implements FileOps {
-  readonly contents = new Map<FileHandle, string>();
+type SessionFiles = SessionPlatform["files"];
+class FakeFiles implements SessionFiles {
+  readonly contents = new Map<FileRef, string>();
   writes = 0;
   denied = false;
-  picks: (FileHandle | null | "download")[] = [];
+  picks: (FileRef | null | "download")[] = [];
   downloads: [string, string][] = [];
   /** Runs while a write is under way. */
   during: (() => void) | null = null;
-  handle(name: string, text: string | null = null): FileHandle {
-    const h = { name } as FileHandle;
+  handle(name: string, text: string | null = null): FileRef {
+    const h: FileRef = { name };
     if (text !== null) this.contents.set(h, text);
     return h;
   }
-  async read(h: FileHandle) {
+  async read(h: FileRef) {
     return this.contents.get(h) ?? null;
   }
-  async write(h: FileHandle, text: string, ask: boolean) {
+  async write(h: FileRef, text: string, ask: boolean) {
     if (this.denied && !ask) throw new Error("not allowed");
     this.writes++;
     this.during?.();
     this.contents.set(h, text);
   }
-  async pick() {
+  async pickSave() {
     return this.picks.shift() ?? null;
+  }
+  async same(a: FileRef, b: FileRef) {
+    return a === b;
   }
   download(text: string, name: string) {
     this.downloads.push([name, text]);
@@ -129,7 +133,7 @@ describe("the board session", () => {
   async function open(withFile = true) {
     const store = new BoardStore(boardFromDict(JSON.parse(ORIGINAL)), m);
     const handle = withFile ? files.handle("Tracks.json", ORIGINAL) : null;
-    const s = new BoardSession(store, { name: "Tracks", handle, text: withFile ? ORIGINAL : null }, db, locks, host, files, () => clock);
+    const s = new BoardSession(store, { name: "Tracks", handle, text: withFile ? ORIGINAL : null }, { db, locks, files, backups: dbBackups(async () => db) }, host, () => clock);
     await s.start();
     return { store, s, handle };
   }
@@ -267,7 +271,7 @@ describe("the board session", () => {
   it("spots a file already open in another tab, and records recent files", async () => {
     const first = await open();
     const store = new BoardStore(boardFromDict(JSON.parse(ORIGINAL)), m);
-    const again = new BoardSession(store, { name: "Tracks", handle: first.handle, text: ORIGINAL }, db, locks, host, files, () => clock);
+    const again = new BoardSession(store, { name: "Tracks", handle: first.handle, text: ORIGINAL }, { db, locks, files, backups: dbBackups(async () => db) }, host, () => clock);
     await again.start(); // (an exclusive board lock would wait here forever)
     expect(first.s.openElsewhere).toBe(false);
     expect(again.openElsewhere).toBe(true);

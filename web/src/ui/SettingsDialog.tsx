@@ -1,12 +1,13 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import { OPTIONS, getOption, setOption, type OptionKey } from "../platform/settings.ts";
 import { clearErrors, describeError, errorEntries, errorReport, logError } from "../platform/errorLog.ts";
+import { getHost } from "../platform/host.ts";
 import { Dialog } from "./Dialog.tsx";
 
 /** Copy text to the clipboard; false if the browser wouldn't. */
 async function copyText(text: string): Promise<boolean> {
   try {
-    await navigator.clipboard.writeText(text);
+    await getHost().clipboard.writeText(text);
     return true;
   } catch {
     return false;
@@ -16,13 +17,14 @@ async function copyText(text: string): Promise<boolean> {
 /** The error log's line in Settings: how many, copy, clear. */
 function ErrorLogRow() {
   const [count, setCount] = useState(() => errorEntries().length);
+  const place = getHost().errors.place;
   const [copied, setCopied] = useState("");
   return (
     <fieldset className="details">
       <legend>Error log</legend>
       <p className="muted small-note">
-        {count ? `${count} unexpected error${count === 1 ? "" : "s"} logged in this browser.` : "No errors logged."} The log
-        stays in this browser; nothing is sent anywhere.
+        {count ? `${count} unexpected error${count === 1 ? "" : "s"} logged ${place}.` : "No errors logged."} The log
+        stays {place}; nothing is sent anywhere.
       </p>
       <div className="row">
         <button type="button" onClick={async () => setCopied(await copyText(errorReport()) ? "Copied." : "The browser wouldn't copy it.")}>

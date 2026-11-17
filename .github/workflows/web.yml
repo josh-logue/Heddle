@@ -35,6 +35,9 @@ jobs:
     defaults:
       run:
         working-directory: web
+    env:
+      # The desktop shell's Electron isn't needed here (its tests run on Windows, W9f).
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7
 

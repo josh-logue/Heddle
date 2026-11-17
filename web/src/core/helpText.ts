@@ -5,7 +5,11 @@
 
 export const CONTROLS_START = "<!-- web-controls:start (generated from web/src/controls.md: edit that file, then run `npm run help` in web/) -->";
 export const CONTROLS_END = "<!-- web-controls:end -->";
-const ENTRY = /^- \*\*(.+?)\*\*: (.+)$/;
+const ENTRY = /^- \*\*(.+?)\*\*(?: \[(browser|desktop)\])?: (.+)$/;
+const HEADING = /^## (.+?)(?: \[(browser|desktop)\])?$/;
+
+/** Which app's controls: entries and sections marked for the other one are left out. */
+export type ControlsKind = "browser" | "desktop";
 const BACKSLASH = String.fromCharCode(92); // (escapes a "|" inside a Markdown table cell)
 
 export type Sections = [section: string, entries: [action: string, how: string][]][];
@@ -15,19 +19,26 @@ export function helpMarkdown(text: string): string {
   return text.replace(/<!--[\s\S]*?-->\s*/g, "").trim() + "\n";
 }
 
-/** [(section, [(action, how), …]), …]. Throws on a line that isn't a heading, an entry or
- *  blank, so a slip in controls.md is caught by the tests. */
-export function parseControls(text: string): Sections {
+/** [(section, [(action, how), …]), …] for one app (the browser's by default). Throws on a
+ *  line that isn't a heading, an entry or blank, so a slip in controls.md is caught by the
+ *  tests. */
+export function parseControls(text: string, kind: ControlsKind = "browser"): Sections {
   const sections: Sections = [];
+  let skipping = false; // in a section for the other app
+  let started = false;
   helpMarkdown(text).split("\n").forEach((line, i) => {
     if (!line.trim()) return;
-    if (line.startsWith("## ")) {
-      sections.push([line.slice(3).trim(), []]);
+    const h = HEADING.exec(line);
+    if (line.startsWith("## ") && h) {
+      started = true;
+      skipping = !!h[2] && h[2] !== kind;
+      if (!skipping) sections.push([h[1]!.trim(), []]);
       return;
     }
     const m = ENTRY.exec(line);
-    if (!m || !sections.length) throw new Error(`controls.md line ${i + 1} isn't '## Section' or '- **Action**: how': ${line}`);
-    sections[sections.length - 1]![1].push([m[1]!, m[2]!]);
+    if (!m || !started) throw new Error(`controls.md line ${i + 1} isn't '## Section' or '- **Action**: how': ${line}`);
+    if (skipping || (m[2] && m[2] !== kind)) return;
+    sections[sections.length - 1]![1].push([m[1]!, m[3]!]);
   });
   return sections;
 }

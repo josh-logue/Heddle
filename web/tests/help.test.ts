@@ -31,3 +31,27 @@ describe("the web controls", () => {
     for (const key of ["N", "T", "Ctrl+,", "F1", "Ctrl+Shift+R", "Ctrl+Shift+K", "Ctrl+Shift+O"]) expect(controls).toContain(key);
   });
 });
+
+describe("the desktop's controls", () => {
+  const browser = parseControls(controls, "browser");
+  const desktop = parseControls(controls, "desktop");
+  const actions = (s: ReturnType<typeof parseControls>) => s.flatMap(([, entries]) => entries.map(([a]) => a));
+
+  it("leave out the browser's keys and add the windows; each action once", () => {
+    expect(desktop.map(([s]) => s)).toEqual(
+      ["Cards", "Connections", "Groups", "Story", "Finding", "Files", "View and settings", "Windows"]);
+    for (const s of [browser, desktop]) expect(new Set(actions(s)).size).toBe(actions(s).length);
+    const how = (s: ReturnType<typeof parseControls>, action: string) => s.flatMap(([, e]) => e).find(([a]) => a === action)?.[1];
+    expect(how(browser, "Add card")).toContain("or N with the board focused");
+    expect(how(desktop, "Add card")).toContain("Ctrl+Shift+N");
+    expect(how(desktop, "Character thread")).toMatch(/^Ctrl\+T /);
+    expect(how(desktop, "Zoom")).toContain("Ctrl+1");
+    expect(JSON.stringify(desktop)).not.toMatch(/Chrome|Edge|this browser|browser tabs/);
+  });
+
+  it("a mark for another app hides its heading's entries too", () => {
+    const text = "## A [desktop]\n- **X**: x\n## B\n- **Y** [browser]: y\n- **Y** [desktop]: why";
+    expect(parseControls(text, "browser")).toEqual([["B", [["Y", "y"]]]]);
+    expect(parseControls(text, "desktop")).toEqual([["A", [["X", "x"]]], ["B", [["Y", "why"]]]]);
+  });
+});

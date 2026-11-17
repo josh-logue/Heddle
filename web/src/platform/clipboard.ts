@@ -7,6 +7,7 @@
 // that, so the last cards copied in this tab are also kept here for "Paste here".
 
 import { CLIPBOARD_MIME, boardFromDict, boardToDict, type BoardData } from "../core/model.ts";
+import { getHost } from "./host.ts";
 
 let local: string | null = null;
 /** The plain text put on the clipboard with `local` (the cards' titles). */
@@ -38,7 +39,7 @@ export function writeFragment(fragment: BoardData, event?: ClipboardEvent): void
     event.clipboardData.setData("text/plain", text);
     event.preventDefault();
   } else {
-    void navigator.clipboard?.writeText(text).catch(() => undefined);
+    void getHost().clipboard.writeText(text).catch(() => undefined);
   }
 }
 
