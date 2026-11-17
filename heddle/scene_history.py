@@ -10,11 +10,11 @@ from .model import (
     DISPLAY_DEFAULTS,
     BoardData, CardData,
     ConnectionData,
-    RENAMABLE_FIELDS, clean_display, copy_route, RouteData, StrandInfo,
+    RENAMABLE_FIELDS, clean_display, copy_route, RouteData, StrandGroup, StrandInfo,
 )
 
 from .scene_consts import (
-    BASE_SCENE_RECT, _CARD_FIELDS, _CONN_FIELDS, _ROUTE_FIELDS, _STRAND_FIELDS,
+    BASE_SCENE_RECT, _CARD_FIELDS, _CONN_FIELDS, _GROUP_FIELDS, _ROUTE_FIELDS, _STRAND_FIELDS,
 )
 
 
@@ -65,12 +65,13 @@ class HistoryMixin:
                 tuple(tuple(tuple(v) if isinstance(v, list) else v
                             for v in (getattr(r, f) for f in _ROUTE_FIELDS))
                       for r in self.routes.values()),
-                tuple(tuple(getattr(s, f) for f in _STRAND_FIELDS) for s in self.strand_info.values()))
+                tuple(tuple(getattr(s, f) for f in _STRAND_FIELDS) for s in self.strand_info.values()),
+                tuple(tuple(getattr(g, f) for f in _GROUP_FIELDS) for g in self.strand_groups.values()))
         return (tuple(cards), edges, meta)
 
     @staticmethod
     def _board_from_snapshot(state: tuple) -> BoardData:
-        cards, edges, (colors, saved, display, routes, strands) = state
+        cards, edges, (colors, saved, display, routes, strands, groups) = state
         return BoardData(
             cards=[CardData(**{f: list(v) if isinstance(v, tuple) else v
                                for f, v in zip(_CARD_FIELDS, t)}) for t in cards],
@@ -80,7 +81,8 @@ class HistoryMixin:
             display=dict(display),
             routes=[RouteData(**{f: list(v) if isinstance(v, tuple) else v
                                  for f, v in zip(_ROUTE_FIELDS, t)}) for t in routes],
-            strands=[StrandInfo(**dict(zip(_STRAND_FIELDS, t))) for t in strands])
+            strands=[StrandInfo(**dict(zip(_STRAND_FIELDS, t))) for t in strands],
+            strand_groups=[StrandGroup(**dict(zip(_GROUP_FIELDS, t))) for t in groups])
 
     def reset_history(self) -> None:
         """Forget undo history (new or opened board); the current board counts as saved."""
@@ -179,7 +181,8 @@ class HistoryMixin:
                          saved_values={k: list(v) for k, v in self.saved_values.items() if v},
                          display=dict(self.display),
                          routes=[copy_route(r) for r in self.routes.values()],
-                         strands=[replace(s) for s in self.strand_info.values()])
+                         strands=[replace(s) for s in self.strand_info.values()],
+                         strand_groups=[replace(g) for g in self.strand_groups.values()])
 
     def clear_board(self) -> None:
         self._end_click_mode()
@@ -202,6 +205,7 @@ class HistoryMixin:
         self.display = dict(DISPLAY_DEFAULTS)
         self.routes = {}
         self.strand_info = {}
+        self.strand_groups = {}
         self._graph = None
         if self._highlight is not None:  # its cards are gone
             self._highlight = None
@@ -232,6 +236,10 @@ class HistoryMixin:
         self.routes = {tuple(r.key): copy_route(r) for r in board.routes if r.key and not r.is_blank()}
         self.strand_info = {s.key: replace(s) for s in board.strands
                             if s.kind and s.name and not s.is_blank()}
+        self.strand_groups = {}
+        for g in board.strand_groups:  # (a board built in code may repeat a name: first wins)
+            if g.kind and g.name and g.key not in self.strand_groups:
+                self.strand_groups[g.key] = replace(g)
         for item in items:
             self.add_card(item.card, item)
         # Drop broken memberships: missing parent, parent not a group, or loops.

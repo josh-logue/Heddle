@@ -118,14 +118,11 @@ def tick_filter(qapp):
         was_open = window.filter_dock.isVisible()
         window.filter_dock.show()
         qapp.processEvents()
-        tree = window.filter_panel.tree
-        for i in range(tree.topLevelItemCount()):
-            top = tree.topLevelItem(i)
-            for j in range(top.childCount()):
-                child = top.child(j)
-                if child.data(0, Qt.ItemDataRole.UserRole) == category and \
-                        child.data(0, Qt.ItemDataRole.UserRole + 1) == key:
-                    child.setCheckState(0, Qt.CheckState.Checked)
+        for child in window.filter_panel._rows():  # (strands in a group are a level down)
+            if child.data(0, Qt.ItemDataRole.UserRole) == category and \
+                    child.data(0, Qt.ItemDataRole.UserRole + 1) == key:
+                child.setCheckState(0, Qt.CheckState.Checked)
+                break
         if not (keep_open or was_open):
             window.filter_dock.hide()
         qapp.processEvents()

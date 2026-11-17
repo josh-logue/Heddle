@@ -1,16 +1,23 @@
-"""Side panel listing card details as checkboxes; non-matching cards are dimmed."""
+"""Side panel listing card details as checkboxes; non-matching cards are dimmed.
+
+Strand groups (model.StrandGroup) are listed first in their kind's categories (character
+groups under Characters, POV and Introduces too), with their strands under them; ticking a
+group ticks every strand in it that cards use, and it shows partly ticked when only some
+are. Groups are only a way of ticking strands: the filter itself (filters.matches) never
+sees them, so "match all" with a group ticked needs every strand in it."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QHBoxLayout, QHeaderView, QLabel, QMenu, QPushButton, QToolButton, QTreeWidget, QTreeWidgetItem,
-    QVBoxLayout, QWidget,
+    QHBoxLayout, QHeaderView, QLabel, QMenu, QPushButton, QStyle, QToolButton, QTreeWidget,
+    QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
 from . import settings, theme
 from .filters import (
-    CATEGORIES, LABELS, MATCH_ALL_CATEGORIES, NONE_KEY, collect_options, describe_counts, matches,
+    CATEGORIES, LABELS, MATCH_ALL_CATEGORIES, NONE_KEY, card_keys, collect_options, describe_counts,
+    matches,
 )
 from .model import RENAMABLE_FIELDS
 from .rename_dialog import FIELD_LABELS
@@ -18,6 +25,12 @@ from .widgets import swatch_icon
 
 ROLE_CAT = Qt.ItemDataRole.UserRole
 ROLE_KEY = Qt.ItemDataRole.UserRole + 1
+ROLE_GROUP = Qt.ItemDataRole.UserRole + 2   # a group row's name
+ROLE_MEMBERS = Qt.ItemDataRole.UserRole + 3  # a group row's ticks: its strands' keys on cards
+ROLE_FOLD = Qt.ItemDataRole.UserRole + 4    # what folding the row is remembered as
+# The kind of strand group each category lists: POV and Introduces are characters.
+GROUP_KINDS = {"tags": "tags", "characters": "characters", "pov": "characters",
+               "introduces": "characters", "locations": "locations", "status": "status"}
 # Which categories need every ticked entry: a habit, so remembered per machine (the
 # ticks themselves aren't kept), as a comma-separated list of category names.
 MATCH_ALL_KEY = "filter/match_all"
@@ -39,6 +52,7 @@ class FilterPanel(QWidget):
         super().__init__(parent)
         self.scene = scene
         self._options: dict | None = None
+        self._groups: tuple | None = None  # the strand groups listed (see _group_rows)
         self._story_tools = True  # whether the Introduces category (a story tool) is listed
         self._selection: dict[str, set[str]] = {c: set() for c in CATEGORIES}
         self._collapsed: set[str] = set()
@@ -65,8 +79,8 @@ class FilterPanel(QWidget):
         self.tree.setUniformRowHeights(True)
         self.apply_theme()
         self.tree.itemChanged.connect(self._on_item_changed)
-        self.tree.itemCollapsed.connect(lambda it: self._collapsed.add(it.data(0, ROLE_CAT)))
-        self.tree.itemExpanded.connect(lambda it: self._collapsed.discard(it.data(0, ROLE_CAT)))
+        self.tree.itemCollapsed.connect(lambda it: self._collapsed.add(it.data(0, ROLE_FOLD)))
+        self.tree.itemExpanded.connect(lambda it: self._collapsed.discard(it.data(0, ROLE_FOLD)))
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._context_menu)
         scene.value_renamed.connect(self.on_value_renamed)
@@ -106,9 +120,11 @@ class FilterPanel(QWidget):
         options = collect_options((item.card for item in self.scene.cards.values() if not item.is_strand),
                                   self._extras())
         story = bool(self.scene.display.get("story_tools", True))
-        if options != self._options or story != self._story_tools:
+        groups = self._group_rows()
+        if options != self._options or story != self._story_tools or groups != self._groups:
             self._options = options
             self._story_tools = story
+            self._groups = groups
             self._rebuild()
         self.apply()
 
@@ -139,6 +155,12 @@ class FilterPanel(QWidget):
         self._update_hint()
         self.apply()
 
+    def _group_rows(self) -> tuple:
+        """{kind: ((name, (member keys…)), …)} as a tuple, for noticing when groups change."""
+        return tuple((kind, tuple((g.name, tuple(m.casefold() for m in g.members))
+                                  for g in self.scene.groups_of(kind)))
+                     for kind in RENAMABLE_FIELDS)
+
     def match_note(self) -> str:
         """For the canvas bar: the "all" categories where it changes the result
         (2+ entries ticked), e.g. "all tags, all characters"; "" when none."""
@@ -147,16 +169,38 @@ class FilterPanel(QWidget):
 
     def clear_selection(self) -> None:
         self._selection = {c: set() for c in CATEGORIES}
-        self.tree.blockSignals(True)
+        self._sync_checks()
+        self._update_titles()
+        self.apply()
+
+    def _rows(self):
+        """Every row under the headings: groups, their strands, and the other entries."""
         for i in range(self.tree.topLevelItemCount()):
             top = self.tree.topLevelItem(i)
             for j in range(top.childCount()):
                 child = top.child(j)
-                if child.flags() & Qt.ItemFlag.ItemIsUserCheckable:
-                    child.setCheckState(0, Qt.CheckState.Unchecked)
+                yield child
+                for k in range(child.childCount()):
+                    yield child.child(k)
+
+    def _sync_checks(self) -> None:
+        """Show the selection on every box: a strand under two groups, and outside them,
+        is one tick; a group is ticked, partly ticked or not by its strands."""
+        self.tree.blockSignals(True)
+        for item in self._rows():
+            if not item.flags() & Qt.ItemFlag.ItemIsUserCheckable:
+                continue
+            selected = self._selection[item.data(0, ROLE_CAT)]
+            members = item.data(0, ROLE_MEMBERS)
+            if members is not None:
+                n = sum(1 for k in members if k in selected)
+                state = (Qt.CheckState.Checked if n == len(members) else
+                         Qt.CheckState.PartiallyChecked if n else Qt.CheckState.Unchecked)
+            else:
+                state = Qt.CheckState.Checked if item.data(0, ROLE_KEY) in selected else Qt.CheckState.Unchecked
+            if item.checkState(0) != state:
+                item.setCheckState(0, state)
         self.tree.blockSignals(False)
-        self._update_titles()
-        self.apply()
 
     def is_active(self) -> bool:
         return any(self._selection.values())
@@ -191,6 +235,9 @@ class FilterPanel(QWidget):
         bold.setBold(True)
         italic = QFont()
         italic.setItalic(True)
+        folder = self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon)
+        cards = [item.card for item in self.scene.cards.values() if not item.is_strand]
+        extras = self._extras()
         for cat in CATEGORIES:
             if cat == "introduces" and not self._story_tools:
                 self._selection[cat].clear()  # a story tool: not offered while they're off
@@ -202,6 +249,7 @@ class FilterPanel(QWidget):
             top.setFlags(Qt.ItemFlag.ItemIsEnabled)
             top.setFont(0, bold)
             top.setData(0, ROLE_CAT, cat)
+            top.setData(0, ROLE_FOLD, cat)
             if not options:
                 empty = QTreeWidgetItem(top, ["No cards yet"])
                 empty.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -209,22 +257,54 @@ class FilterPanel(QWidget):
                 empty.setFirstColumnSpanned(True)
             elif cat in MATCH_ALL_CATEGORIES:
                 self.tree.setItemWidget(top, 1, self._mode_button(cat))
+            by_key = {key: (key, display, count) for key, display, count in options}
+            grouped: set[str] = set()
+            for group in self.scene.groups_of(GROUP_KINDS[cat]) if cat in GROUP_KINDS else ():
+                # Only the strands cards use: the others have nothing to show.
+                members = [by_key[m.casefold()] for m in group.members if m.casefold() in by_key]
+                if not members:
+                    continue
+                keys = tuple(key for key, _, _ in members)
+                n = sum(1 for card in cards if card_keys(card, cat, extras) & set(keys))
+                fold = f"{cat}/{group.name.casefold()}"
+                row = QTreeWidgetItem(top, [f"{group.name}   ({n})"])
+                row.setFirstColumnSpanned(True)
+                row.setIcon(0, folder)
+                row.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+                row.setData(0, ROLE_CAT, cat)
+                row.setData(0, ROLE_GROUP, group.name)
+                row.setData(0, ROLE_MEMBERS, keys)
+                row.setData(0, ROLE_FOLD, fold)
+                row.setToolTip(0, f"Strand group: ticking it ticks all {len(keys)} of its strands "
+                                  f"on cards ({n} card{'' if n == 1 else 's'} have one)")
+                for member in members:
+                    self._entry(row, cat, *member, italic)
+                grouped.update(keys)
+                row.setExpanded(fold not in self._collapsed)
             for key, display, count in options:
-                child = QTreeWidgetItem(top, [f"{display}   ({count})"])
-                child.setFirstColumnSpanned(True)
-                child.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
-                child.setCheckState(0, Qt.CheckState.Checked if key in self._selection[cat]
-                                    else Qt.CheckState.Unchecked)
-                child.setData(0, ROLE_CAT, cat)
-                child.setData(0, ROLE_KEY, key)
-                if key == NONE_KEY:
-                    child.setFont(0, italic)
-                if cat == "color":
-                    child.setIcon(0, swatch_icon(key))
+                if key not in grouped:
+                    self._entry(top, cat, key, display, count, italic)
             top.setExpanded(cat not in self._collapsed)
         self.tree.blockSignals(False)
+        self._sync_checks()
+        self._update_hint()  # (it mentions groups once there are any)
         self._update_titles()
         self.tree.verticalScrollBar().setValue(scroll)
+
+    @staticmethod
+    def _entry(parent, cat: str, key: str, display: str, count: int, italic: QFont) -> QTreeWidgetItem:
+        """One value's checkbox row (its tick is set by _sync_checks)."""
+        child = QTreeWidgetItem(parent, [f"{display}   ({count})"])
+        child.setFirstColumnSpanned(True)
+        child.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+        child.setCheckState(0, Qt.CheckState.Unchecked)
+        child.setData(0, ROLE_CAT, cat)
+        child.setData(0, ROLE_KEY, key)
+        if key == NONE_KEY:
+            child.setFont(0, italic)
+        if cat == "color":
+            child.setIcon(0, swatch_icon(key))
+        return child
 
     def _mode_button(self, cat: str) -> QToolButton:
         """The "match any / match all" switch at the right of a heading."""
@@ -258,6 +338,8 @@ class FilterPanel(QWidget):
             listed = alls[0] if len(alls) == 1 else ", ".join(alls[:-1]) + " and " + alls[-1]
             text = (f"Cards need every ticked entry in {listed}, and any ticked entry elsewhere; "
                     "separate categories must all match.")
+            if any(self.scene.groups_of(GROUP_KINDS[c]) for c in MATCH_ALL_CATEGORIES if c in self._match_all):
+                text += " A ticked strand group there needs every strand in it."
         self.hint.setText(text)
 
     def _update_titles(self) -> None:
@@ -269,8 +351,15 @@ class FilterPanel(QWidget):
 
     def _context_menu(self, pos) -> None:
         item = self.tree.itemAt(pos)
-        if item is None:
-            return
+        menu = self._menu_for(item) if item is not None else None
+        if menu is not None and not menu.isEmpty():
+            menu.exec(self.tree.viewport().mapToGlobal(pos))
+
+    def _menu_for(self, item) -> QMenu | None:
+        """A row's right-click menu: follow or rename its strand. None for a group row
+        (groups are renamed in the Strands panel)."""
+        if item.data(0, ROLE_GROUP) is not None:
+            return None
         cat = item.data(0, ROLE_CAT)
         key = item.data(0, ROLE_KEY)
         value = ""
@@ -285,8 +374,7 @@ class FilterPanel(QWidget):
             noun = FIELD_LABELS[field].lower()
             menu.addAction(f"Rename {noun} “{value}”…" if value else f"Rename a {noun}…",
                            lambda: self._rename(field, value))
-        if not menu.isEmpty():
-            menu.exec(self.tree.viewport().mapToGlobal(pos))
+        return menu
 
     def _rename(self, cat: str, value: str) -> None:
         self.scene.open_rename_dialog(cat, value)
@@ -300,13 +388,16 @@ class FilterPanel(QWidget):
                 self._selection[c].add(new.casefold())
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
-        key = item.data(0, ROLE_KEY)
-        if key is None:
+        key, members = item.data(0, ROLE_KEY), item.data(0, ROLE_MEMBERS)
+        if key is None and members is None:
             return
         cat = item.data(0, ROLE_CAT)
+        keys = set(members) if members is not None else {key}
+        # A partly ticked group clicked becomes ticked (Qt's toggle): every strand in it.
         if item.checkState(0) == Qt.CheckState.Checked:
-            self._selection[cat].add(key)
+            self._selection[cat] |= keys
         else:
-            self._selection[cat].discard(key)
+            self._selection[cat] -= keys
+        self._sync_checks()  # the same strand elsewhere, and the groups around it
         self._update_titles()
         self.apply()

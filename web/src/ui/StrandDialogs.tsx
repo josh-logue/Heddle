@@ -3,7 +3,7 @@ import { RENAMABLE_FIELDS, countValues, type StrandField, type StrandKind } from
 import { casefold, sortedBy } from "../core/pystr.ts";
 import { COLORS_KEY, type BoardStore } from "../board/store.ts";
 import { Dialog } from "./Dialog.tsx";
-import { KIND_LABELS, KIND_ONE } from "./panels/StrandsPanel.tsx";
+import { KIND_LABELS, KIND_ONE, KIND_PLURAL, strandsText } from "./panels/StrandsPanel.tsx";
 
 const FIELD_LABELS: Record<StrandKind, string> = { tags: "Tag", characters: "Character", locations: "Location", status: "Status" };
 
@@ -178,6 +178,42 @@ export function ApplyFields({ kind, source, fields, others, onOk, onClose }: {
         </div>
         <label><input type="checkbox" checked={withValues} onChange={(e) => setWithValues(e.target.checked)} /> Also copy the values (only into empty fields)</label>
       </div>
+    </Dialog>
+  );
+}
+
+
+/** Name a strand group (heddle/strand_group_dialog.py): a new one, starting with the picked
+ *  strands of the kind chosen (`picked`), or a renamed one (`name`, the kind fixed). OK stays
+ *  off while the name is blank or the kind already has a strand group by that name. */
+export function StrandGroupDialog({ store, kind: kind0, name: name0 = "", picked, onOk, onClose }: {
+  store: BoardStore; kind: StrandKind; name?: string; picked?: Partial<Record<StrandKind, string[]>>;
+  onOk: (kind: StrandKind, name: string, members: string[]) => void; onClose: () => void;
+}) {
+  const renaming = picked === undefined;
+  const [kind, setKind] = useState<StrandKind>(kind0);
+  const [name, setName] = useState(name0);
+  const clean = name.split(/\s+/).filter(Boolean).join(" ");
+  const taken = !!clean && casefold(clean) !== casefold(name0.trim()) && !!store.strandGroup(kind, clean);
+  const members = picked?.[kind] ?? [];
+  const ok = () => {
+    if (clean && !taken) onOk(kind, clean, members);
+  };
+  return (
+    <Dialog title={renaming ? "Rename Strand Group" : "New Strand Group"} okLabel={renaming ? "Rename" : "Create"} onOk={ok} onCancel={onClose}>
+      <div className="field"><label htmlFor="sg-name">Name</label>
+        <input id="sg-name" type="text" value={name} placeholder="e.g. Family, Act 1 tags, The Wards"
+               onChange={(e) => setName(e.target.value)} /></div>
+      <div className="field"><label htmlFor="sg-kind">Kind</label>
+        <select id="sg-kind" value={kind} disabled={renaming} onChange={(e) => setKind(e.target.value as StrandKind)}
+                title={renaming ? "A strand group's kind can't change" : "A strand group holds strands of one kind"}>
+          {RENAMABLE_FIELDS.map((k) => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
+        </select></div>
+      {!renaming && (
+        <p className="muted small-note">{members.length ? `It starts with the ${strandsText(members.length, kind)} you picked.`
+          : `It starts empty. Tick ${KIND_PLURAL[kind]} in its member list, or right-click one and choose Add to Strand Group.`}</p>
+      )}
+      {taken && <p role="alert">There's already a {KIND_ONE[kind]} strand group called “{clean}”.</p>}
     </Dialog>
   );
 }

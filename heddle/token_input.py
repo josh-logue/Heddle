@@ -136,17 +136,32 @@ class EntryPickerDialog(QDialog):
         return self.checklist.checked_labels()
 
 
+# In the editors' suggestions dict: {field: {strand group name: members}} (see TokenInput).
+STRAND_GROUPS_KEY = "strand_groups"
+
+
+def group_label(name: str, members) -> str:
+    """How a strand group is offered among a box's suggestions: "Family · strand group (3)"."""
+    return f"{name} · strand group ({len(members)})"
+
+
 class TokenInput(QWidget):
     """Edits a list of strings. Type + Enter (or pick a suggestion) to add;
-    × on a chip to remove; ▾ shows existing entries; List… opens a checklist."""
+    × on a chip to remove; ▾ shows existing entries; List… opens a checklist.
+
+    `groups` ({name: members}) are strand groups: offered after the strands (see
+    group_label), and picking one adds all its strands at once. Typing a group's bare name
+    still adds a strand by that name: only the labelled suggestion means the group."""
 
     changed = Signal()
 
     def __init__(self, values: list[str], suggestions: list[str], noun: str,
-                 noun_plural: str | None = None, parent: QWidget | None = None):
+                 noun_plural: str | None = None, parent: QWidget | None = None,
+                 groups: dict[str, list[str]] | None = None):
         super().__init__(parent)
         self._values = list(values)
         self._suggestions = list(suggestions)
+        self._groups = {group_label(n, m): list(m) for n, m in (groups or {}).items() if m}
         self._noun = noun
         self._noun_plural = noun_plural or noun + "s"
         self.setStyleSheet(theme.chip_stylesheet())
@@ -198,6 +213,8 @@ class TokenInput(QWidget):
 
     def add_value(self, text: str) -> bool:
         text = text.strip()
+        if text in self._groups:  # a strand group's suggestion: all its strands
+            return self.add_values(self._groups[text])
         if not text:
             return False
         key = text.casefold()
@@ -209,6 +226,21 @@ class TokenInput(QWidget):
         self._render()
         self.changed.emit()
         return True
+
+    def add_values(self, texts) -> bool:
+        """Add several entries at once (one `changed`); returns whether any were new."""
+        have = {v.casefold() for v in self._values}
+        added = False
+        for text in texts:
+            text = text.strip()
+            if text and text.casefold() not in have:
+                have.add(text.casefold())
+                self._values.append(next((s for s in self._suggestions if s.casefold() == text.casefold()), text))
+                added = True
+        if added:
+            self._render()
+            self.changed.emit()
+        return added
 
     def commit_pending(self) -> bool:
         """Add whatever is still typed in the box (as if Enter were pressed)."""
@@ -269,7 +301,10 @@ class TokenInput(QWidget):
             self._flow.addWidget(empty)
         self._chip_box.fit_height()
         current = {v.casefold() for v in self._values}
-        self._model.setStringList([s for s in self._suggestions if s.casefold() not in current])
+        # Strand groups follow the strands, while they'd still add something.
+        self._model.setStringList([s for s in self._suggestions if s.casefold() not in current]
+                                  + [label for label, members in self._groups.items()
+                                     if any(m.casefold() not in current for m in members)])
 
     def _commit_text(self) -> None:
         if self.add_value(self.edit.text()):

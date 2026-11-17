@@ -25,7 +25,9 @@ APP_ID = "Heddle"
 # v10: a strand's custom `fields` ({"name", "value"} objects, in order).
 # v11: `display.show_description` and `display.compact_cards`.
 # v12: a group card's `arrange_wrap` (auto-arrange's row limit).
-FORMAT_VERSION = 12
+# v13: `strand_groups`, named sets of strands of one kind ({"kind", "name", "members",
+#      "description"}), for filtering and adding several strands at once.
+FORMAT_VERSION = 13
 # The largest row limit a group can have (steps per row when auto-arranging).
 ARRANGE_WRAP_MAX = 99
 
@@ -472,6 +474,54 @@ def clean_strands(raw: Any) -> list[StrandInfo]:
     return out
 
 
+@dataclass
+class StrandGroup:
+    """A named set of strands of one kind (Strands panel), e.g. a "Family" of
+    characters. A strand can be in several groups. A group is a shortcut: adding one to a
+    card adds its members, and cards never refer to the group, so the story tools and
+    filters only ever see strands. Names match ignoring case, within a kind. `members` keep
+    the board's spellings, in the order they were added; they count as strands on the
+    board (see BoardData.all_values), so a member no card uses stays listed."""
+    kind: str = "tags"
+    name: str = ""
+    members: tuple[str, ...] = ()
+    description: str = ""
+
+    def __post_init__(self) -> None:
+        self.kind = self.kind if self.kind in RENAMABLE_FIELDS else ""
+        self.name = _one_line(self.name)
+        # A tuple, so undo snapshots and copies never share a list later edits could change.
+        self.members = tuple(clean_list(self.members if isinstance(self.members, (list, tuple)) else []))
+        self.description = _as_text(self.description)
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return self.kind, self.name.casefold()
+
+    def has(self, strand: str) -> bool:
+        key = strand.strip().casefold()
+        return any(m.casefold() == key for m in self.members)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": self.kind, "name": self.name, "members": list(self.members),
+                "description": self.description}
+
+
+def clean_strand_groups(raw: Any) -> list[StrandGroup]:
+    """Saved strand groups: well-formed, named, one per name within a kind (the first
+    wins). Empty groups are kept: a group can be made before anything is put in it."""
+    out: list[StrandGroup] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in raw if isinstance(raw, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        group = _build(StrandGroup, entry)
+        if group.kind and group.name and group.key not in seen:
+            seen.add(group.key)
+            out.append(group)
+    return out
+
+
 def picture_for_file(picture: str, board_dir: Path | None) -> str:
     """How a picture path is written into a board file in `board_dir`: relative if the
     image is inside that folder (or below it), otherwise absolute."""
@@ -543,6 +593,8 @@ class BoardData:
     routes: list[RouteData] = field(default_factory=list)
     # Strands' own descriptions and pictures (only those with something set).
     strands: list[StrandInfo] = field(default_factory=list)
+    # Named sets of strands (see StrandGroup), in the order they were made.
+    strand_groups: list[StrandGroup] = field(default_factory=list)
     # The format version the board was read from (not saved: saving writes the
     # current version). Higher than FORMAT_VERSION means a newer app wrote it.
     source_version: int = field(default=FORMAT_VERSION, compare=False, repr=False)
@@ -555,6 +607,7 @@ class BoardData:
         extra = list(self.saved_values.get(field_name, ()))
         extra += [spelling for spelling, _ in count_values(self.routes, field_name).values()]
         extra += [s.name for s in self.strands if s.kind == field_name]
+        extra += [m for g in self.strand_groups if g.kind == field_name for m in g.members]
         return board_values(self.cards, field_name, extra)
 
     @property
@@ -572,6 +625,7 @@ class BoardData:
             "connections": [asdict(c) for c in self.connections],
             "routes": [asdict(r) for r in self.routes if r.key and not r.is_blank()],
             "strands": [s.to_dict() for s in self.strands if s.kind and s.name and not s.is_blank()],
+            "strand_groups": [g.to_dict() for g in self.strand_groups if g.kind and g.name],
         }
 
     @classmethod
@@ -602,6 +656,7 @@ class BoardData:
                    saved_values=clean_saved_values(raw.get("saved_values")),
                    display=clean_display(raw.get("display")), routes=clean_routes(raw.get("routes")),
                    strands=clean_strands(raw.get("strands")),
+                   strand_groups=clean_strand_groups(raw.get("strand_groups")),
                    source_version=version, load_notes=notes)
 
 

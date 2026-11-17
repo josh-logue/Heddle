@@ -21,6 +21,7 @@ from .widgets import swatch_icon
 STD = QKeySequence.StandardKey
 # The row limits offered on a group's right-click menu (any other is set in the group editor).
 WRAP_CHOICES = (3, 4, 5, 6, 8, 10)
+_KIND_MENU_LABELS = {"tags": "Tags", "characters": "Characters", "locations": "Locations"}
 
 
 
@@ -116,6 +117,8 @@ class MenusMixin:
             if not item.is_strand:  # (strand cards are outside the story)
                 self._add_path_actions(menu, item)
             self._add_clipboard_actions(menu, item, pos)
+            if not item.is_strand:
+                self._add_strand_group_menu(menu)
             menu.addSeparator()
             if self.parent_of(item) is not None:
                 menu.addAction("Remove from group",
@@ -173,6 +176,26 @@ class MenusMixin:
         # (Ctrl+V pastes at the mouse pointer too, so "here" holds for the key as well.)
         paste = menu.addAction(k("Paste here", STD.Paste), lambda: self.paste_requested.emit(pos))
         paste.setEnabled(self.can_paste())
+
+    def _add_strand_group_menu(self, menu: QMenu) -> None:
+        """Add Strand Group ▸: every strand group of tags, characters and locations (in a
+        submenu per kind when there's more than one kind), adding its strands to the
+        selected cards. A group they all have in full is greyed. Nothing when the board
+        has no strand groups."""
+        choices = self.strand_group_choices()
+        if not choices:
+            return
+        targets = [i for i in self.selectedItems() if isinstance(i, CardItem) and not i.is_strand]
+        sub = menu.addMenu("Add Strand Group")
+        for kind, groups in choices.items():
+            place = sub.addMenu(_KIND_MENU_LABELS[kind]) if len(choices) > 1 else sub
+            for name, members in groups.items():
+                act = place.addAction(f"{name}   ({len(members)})",
+                                      lambda _c=False, kind=kind, name=name:
+                                      self.add_strand_group_to_cards(targets, kind, name))
+                keys = {m.casefold() for m in members}
+                act.setEnabled(bool(keys) and any(
+                    not keys <= {v.casefold() for v in getattr(t.card, kind)} for t in targets))
 
     def _add_path_actions(self, menu: QMenu, item: CardItem) -> None:
         sub = menu.addMenu("Highlight paths")

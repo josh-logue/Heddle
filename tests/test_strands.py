@@ -38,7 +38,7 @@ def test_round_trip_and_version():
     board = BoardData(strands=[StrandInfo("locations", "Keep", "Old stone", "/pics/keep.png"),
                                StrandInfo("tags", "Empty")])
     raw = board.to_dict()
-    assert raw["version"] == FORMAT_VERSION == 12 and len(raw["strands"]) == 1
+    assert raw["version"] == FORMAT_VERSION == 13 and len(raw["strands"]) == 1
     back = BoardData.from_dict(raw)
     assert back.strands == [StrandInfo("locations", "Keep", "Old stone", "/pics/keep.png")]
     assert "Keep" in back.all_values("locations")     # a strand with details is kept on the board

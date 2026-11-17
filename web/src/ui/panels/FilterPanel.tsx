@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  CATEGORIES, LABELS, MATCH_ALL_CATEGORIES, NONE_KEY, collectOptions, describeCounts, type Category,
+  CATEGORIES, LABELS, MATCH_ALL_CATEGORIES, NONE_KEY, cardKeys, collectOptions, describeCounts, type Category, type Option,
 } from "../../core/filters.ts";
-import { KIND_STRAND } from "../../core/model.ts";
+import { KIND_STRAND, type StrandKind } from "../../core/model.ts";
+import { casefold } from "../../core/pystr.ts";
 import type { BoardStore } from "../../board/store.ts";
 import { readJson, writeJson } from "../../platform/settings.ts";
 import type { MenuItem } from "../../canvas/menus.ts";
@@ -35,6 +36,11 @@ function valueMenu(store: BoardStore, cat: string, value: string): MenuItem[] {
 /** The Filter panel (heddle/filter_panel.py): every value on the board as a checkbox, per
  *  category; cards that don't match fade out. Ticked values in one category match any of
  *  them (or, switched to "match all", every one); separate categories must all match. */
+/** The kind of strand group each category lists: POV and Introduces are characters. */
+const GROUP_KINDS: Partial<Record<Category, StrandKind>> = {
+  tags: "tags", characters: "characters", pov: "characters", introduces: "characters", locations: "locations", status: "status",
+};
+
 export function FilterPanel({ store, onMenu }: {
   store: BoardStore;
   /** A value's right-click menu: a character's (POV, introduction's) thread, a rename. */
@@ -63,13 +69,33 @@ export function FilterPanel({ store, onMenu }: {
     if (changed) store.setFilter(next, matchAll);
   });
 
-  const toggle = (cat: string, key: string, on: boolean) => {
+  /** Tick or untick values: one (a strand) or several (a strand group's strands). */
+  const toggle = (cat: string, key: string | readonly string[], on: boolean) => {
     const next = new Map([...selection].map(([c, k]) => [c, new Set(k)]));
     const keys = next.get(cat) ?? new Set<string>();
-    if (on) keys.add(key);
-    else keys.delete(key);
+    for (const k of typeof key === "string" ? [key] : key) {
+      if (on) keys.add(k);
+      else keys.delete(k);
+    }
     next.set(cat, keys);
     store.setFilter(next, matchAll);
+  };
+  const cards = store.state.cards.filter((c) => c.kind !== KIND_STRAND);
+  const extras = store.filterExtras();
+  /** A category's strand groups with the strands cards use there (others have nothing to
+   *  show), and how many cards have any of them. Character groups also list under POV and
+   *  Introduces. */
+  const groupsFor = (cat: Category, opts: readonly Option[]) => {
+    const kind = GROUP_KINDS[cat];
+    if (!kind) return [];
+    const have = new Map(opts.map((o) => [o[0], o]));
+    return store.groupsOf(kind).flatMap((g) => {
+      const members = g.members.map((m) => have.get(casefold(m))).filter((o): o is Option => !!o);
+      if (!members.length) return [];
+      const keys = new Set(members.map(([k]) => k));
+      const n = cards.filter((c) => [...cardKeys(c, cat, extras)].some((k) => keys.has(k))).length;
+      return [{ name: g.name, members, keys: [...keys], n }];
+    });
   };
   const setAll = (cat: string, on: boolean) => {
     const next = new Set(matchAll);
@@ -80,9 +106,11 @@ export function FilterPanel({ store, onMenu }: {
   };
   const active = store.filterActive;
   const alls = MATCH_ALL_CATEGORIES.filter((c) => matchAll.has(c)).map((c) => NOUNS[c]!);
+  const groupsInAll = MATCH_ALL_CATEGORIES.some((c) => matchAll.has(c) && GROUP_KINDS[c] && store.groupsOf(GROUP_KINDS[c]!).length);
   const hint = !alls.length
     ? "Ticked entries in one category match any of them; separate categories must all match."
-    : `Cards need every ticked entry in ${alls.length === 1 ? alls[0] : `${alls.slice(0, -1).join(", ")} and ${alls.at(-1)}`}, and any ticked entry elsewhere; separate categories must all match.`;
+    : `Cards need every ticked entry in ${alls.length === 1 ? alls[0] : `${alls.slice(0, -1).join(", ")} and ${alls.at(-1)}`}, and any ticked entry elsewhere; separate categories must all match.`
+      + (groupsInAll ? " A ticked strand group there needs every strand in it." : "");
 
   return (
     <div className="panel filter-panel">
@@ -114,22 +142,56 @@ export function FilterPanel({ store, onMenu }: {
               {open && (
                 <ul>
                   {!opts.length && <li className="muted"><em>No cards yet</em></li>}
-                  {opts.map(([key, label, count]) => (
-                    <li key={key} onContextMenu={(e) => {
-                      const items = key === NONE_KEY || !onMenu ? [] : valueMenu(store, cat, label);
-                      if (!items.length) return;
-                      e.preventDefault();
-                      onMenu!(items, e.clientX, e.clientY);
-                    }}>
-                      <label>
-                        <input type="checkbox" checked={selection.get(cat)?.has(key) ?? false}
-                               onChange={(e) => toggle(cat, key, e.target.checked)} />
-                        {cat === "color" && <span className="dot" style={{ background: key }} />}
-                        <span className={key === NONE_KEY ? "none" : ""}>{label}</span>
-                        <span className="muted">({count})</span>
-                      </label>
-                    </li>
-                  ))}
+                  {(() => {
+                    const entry = ([key, label, count]: Option, group?: string) => (
+                      <li key={`${group ?? ""}/${key}`} className={group !== undefined ? "member" : undefined} onContextMenu={(e) => {
+                        const items = key === NONE_KEY || !onMenu ? [] : valueMenu(store, cat, label);
+                        if (!items.length) return;
+                        e.preventDefault();
+                        onMenu!(items, e.clientX, e.clientY);
+                      }}>
+                        <label>
+                          <input type="checkbox" checked={selection.get(cat)?.has(key) ?? false}
+                                 onChange={(e) => toggle(cat, key, e.target.checked)} />
+                          {cat === "color" && <span className="dot" style={{ background: key }} />}
+                          <span className={key === NONE_KEY ? "none" : ""}>{label}</span>
+                          <span className="muted">({count})</span>
+                        </label>
+                      </li>
+                    );
+                    const groups = groupsFor(cat, opts);
+                    const grouped = new Set(groups.flatMap((g) => g.keys));
+                    const ticked = selection.get(cat) ?? new Set<string>();
+                    return [
+                      ...groups.flatMap((g) => {
+                        const fold = `${cat}/${casefold(g.name)}`;
+                        const gOpen = !folded.has(fold);
+                        const n = g.keys.filter((k) => ticked.has(k)).length;
+                        return [
+                          <li key={`group:${g.name}`} className="strand-group"
+                              title={`Strand group: ticking it ticks all ${g.keys.length} of its strands on cards (${g.n} card${g.n === 1 ? "" : "s"} have one)`}>
+                            <button type="button" className="fold inline" aria-expanded={gOpen} aria-label={gOpen ? `Fold ${g.name}` : `Unfold ${g.name}`}
+                                    onClick={() => {
+                                      const next = new Set(folded);
+                                      if (gOpen) next.add(fold);
+                                      else next.delete(fold);
+                                      setFolded(next);
+                                    }}>{gOpen ? "▾" : "▸"}</button>
+                            <label>
+                              {/* Partly ticked when only some of its strands are; a click ticks them all. */}
+                              <input type="checkbox" aria-label={`Strand group ${g.name}`} checked={n === g.keys.length}
+                                     ref={(el) => { if (el) el.indeterminate = n > 0 && n < g.keys.length; }}
+                                     onChange={() => toggle(cat, g.keys, n < g.keys.length)} />
+                              <strong>{g.name}</strong>
+                              <span className="muted">({g.n})</span>
+                            </label>
+                          </li>,
+                          ...(gOpen ? g.members.map((o) => entry(o, g.name)) : []),
+                        ];
+                      }),
+                      ...opts.filter(([k]) => !grouped.has(k)).map((o) => entry(o)),
+                    ];
+                  })()}
                 </ul>
               )}
             </section>

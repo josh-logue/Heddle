@@ -114,15 +114,18 @@ function CardForm({ store, card, onEditCard }: { store: BoardStore; card: CardDa
             <textarea rows={5} value={shown.description} placeholder="What happens…" onChange={(e) => edit({ description: e.target.value })} />
           </label>
         )}
-        <TokenInput label="Tags" values={shown.tags} onChange={(tags) => edit({ tags })} suggestions={store.allValues("tags")} noun="tag" />
+        <TokenInput label="Tags" values={shown.tags} onChange={(tags) => edit({ tags })} suggestions={store.allValues("tags")} noun="tag"
+                    groups={store.strandGroupChoices().tags} />
         <TokenInput label="Characters" values={shown.characters} onChange={(characters) => edit({ characters })}
-                    suggestions={store.allValues("characters")} noun="character" />
+                    suggestions={store.allValues("characters")} noun="character"
+                    groups={store.strandGroupChoices().characters} />
         <label>POV
           <input type="text" list="panel-pov" value={shown.pov} placeholder="Whose point of view? (optional)" onChange={(e) => edit({ pov: e.target.value })} />
           <datalist id="panel-pov">{povChoices.map((c) => <option key={c} value={c} />)}</datalist>
         </label>
         <TokenInput label="Locations" values={shown.locations} onChange={(locations) => edit({ locations })}
-                    suggestions={store.allValues("locations")} noun="location" />
+                    suggestions={store.allValues("locations")} noun="location"
+                    groups={store.strandGroupChoices().locations} />
         <label>Status
           <input type="text" list="panel-status" value={shown.status} onChange={(e) => edit({ status: e.target.value })} />
           <datalist id="panel-status">{statuses.map((st) => <option key={st} value={st} />)}</datalist>

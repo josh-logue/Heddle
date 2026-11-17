@@ -8,10 +8,10 @@ from PySide6.QtCore import QPointF, QRectF
 
 from .card_item import CARD_WIDTH, CardItem
 from .model import (
-    BUILTIN_STATUSES, CARD_COLORS, KIND_STRAND, CardData,
+    BUILTIN_STATUSES, BULK_LIST_FIELDS, CARD_COLORS, KIND_STRAND, CardData, apply_bulk_edit,
     board_values,
     count_values, RENAMABLE_FIELDS, clean_list,
-    rename_in_list, rename_value, StrandInfo, apply_fields, merge_fields,
+    rename_in_list, rename_value, StrandGroup, StrandInfo, apply_fields, merge_fields,
 )
 from .rename_dialog import RenameDialog
 from .values_dialog import COLORS_KEY
@@ -19,6 +19,7 @@ from .values_dialog import COLORS_KEY
 from .scene_consts import (
     MERGED_DESCRIPTIONS,
 )
+from .token_input import STRAND_GROUPS_KEY
 
 
 class StrandsMixin:
@@ -67,13 +68,7 @@ class StrandsMixin:
         """A strand is dragged over pos: outline the card or group it would land on, or
         preview the strand card it would make. Returns whether a drop is accepted here."""
         target = self.strand_drop_target(pos)
-        hover = target[1] if target is not None else None
-        if hover is not self._strand_hover:
-            if self._strand_hover is not None and self._strand_hover.scene() is self:
-                self._strand_hover.set_drop_highlight(False)
-            if hover is not None:
-                hover.set_drop_highlight(True)
-            self._strand_hover = hover
+        self._set_strand_hover(target[1] if target is not None else None)
         if target is not None and target[0] != "card":
             data = self._strand_card_data(kind, name, pos)
             size = CardItem(data).card_rect().size()  # laid out alone: close enough for a preview
@@ -81,6 +76,15 @@ class StrandsMixin:
         else:
             self._show_ghost(None)
         return target is not None
+
+    def _set_strand_hover(self, hover: CardItem | None) -> None:
+        """Outline the card or group a dragged strand (or strand group) would land on."""
+        if hover is not self._strand_hover:
+            if self._strand_hover is not None and self._strand_hover.scene() is self:
+                self._strand_hover.set_drop_highlight(False)
+            if hover is not None:
+                hover.set_drop_highlight(True)
+            self._strand_hover = hover
 
     def strand_drag_done(self) -> None:
         """The strand drag left the board or was dropped: no outline, no preview."""
@@ -151,6 +155,7 @@ class StrandsMixin:
         if renamed_saved != saved:
             self.saved_values[field_name] = renamed_saved
         details_changed = self._rename_strand_info(field_name, old, new)
+        groups_changed = self._rename_in_groups(field_name, old, new)
         strand_cards = self.strand_cards(field_name, old)
         for item in strand_cards:
             if item.card.strand != new.strip():
@@ -158,7 +163,8 @@ class StrandsMixin:
                 item.refit()  # its title, and its (possibly merged) description
         for item in self.strand_cards(field_name, new):
             item.refit()
-        if changed or routes_changed or renamed_saved != saved or details_changed or strand_cards:
+        if (changed or routes_changed or renamed_saved != saved or details_changed or groups_changed
+                or strand_cards):
             self.value_renamed.emit(field_name, old, new)
             self.mark_modified()
         return len(changed)
@@ -219,6 +225,7 @@ class StrandsMixin:
             extra += BUILTIN_STATUSES  # always on the board, used or not
         extra += [s for s, _ in count_values(self.routes.values(), field_name).values()]
         extra += [s.name for s in self.strand_info.values() if s.kind == field_name]
+        extra += [m for g in self.strand_groups.values() if g.kind == field_name for m in g.members]
         extra += [i.card.strand for i in self.cards.values()
                   if i.is_strand and i.card.strand_kind == field_name]
         return board_values([i.card for i in self.cards.values()], field_name, extra)
@@ -265,18 +272,20 @@ class StrandsMixin:
 
     def unused_strands(self) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
         """Strands nothing uses (no card or route), per field: (those without details
-        — saved ones only —, those with a description, picture or fields)."""
+        — saved ones only —, those with a description, picture or fields, or in a
+        strand group: someone set those up, so they're only offered on request)."""
         plain: dict[str, list[str]] = {}
         detailed: dict[str, list[str]] = {}
         for f in RENAMABLE_FIELDS:
             used = set(self.strand_usage(f)) | set(self.strand_card_counts(f))
             if f == "status":
                 used |= {s.casefold() for s in BUILTIN_STATUSES}  # built in: never unused
+            grouped = {m.casefold() for g in self.strand_groups.values() if g.kind == f for m in g.members}
             for name in self.all_values(f):
                 key = name.casefold()
                 if key in used:
                     continue
-                if (f, key) in self.strand_info:
+                if (f, key) in self.strand_info or key in grouped:
                     detailed.setdefault(f, []).append(name)
                 elif any(v.casefold() == key for v in self.saved_values.get(f, ())):
                     plain.setdefault(f, []).append(name)
@@ -298,7 +307,8 @@ class StrandsMixin:
 
     def unused_saved_values(self, with_details: bool = False) -> dict[str, list[str]]:
         """Saved strands nothing uses, per field, plus custom palette colours (under
-        COLORS_KEY) that no card or arrow uses. Strands with a description, picture or fields
+        COLORS_KEY) that no card or arrow uses. Strands with a description, picture or fields,
+        or in a strand group,
         are kept back unless `with_details`."""
         plain, detailed = self.unused_strands()
         out = {f: list(v) for f, v in plain.items()}
@@ -357,6 +367,7 @@ class StrandsMixin:
             for key in keys:  # their details go too (a strand may have had only details)
                 if self.strand_info.pop((f, key), None) is not None:
                     gone_keys.add(key)
+            gone_keys |= self._drop_from_groups(f, keys)  # and their place in groups
             removed += len(gone_keys)
             self._let_go.update((f, key) for key in gone_keys)
             if after:
@@ -372,7 +383,178 @@ class StrandsMixin:
         out = {f: list(v) for f, v in self.saved_values.items()}
         for s in self.strand_info.values():
             out.setdefault(s.kind, []).append(s.name)
+        for g in self.strand_groups.values():
+            out.setdefault(g.kind, []).extend(g.members)
         return out
+
+    # ----- strand groups -------------------------------------------------------------
+    def strand_group(self, kind: str, name: str) -> StrandGroup | None:
+        return self.strand_groups.get((kind, name.strip().casefold()))
+
+    def groups_of(self, kind: str) -> list[StrandGroup]:
+        """A field's strand groups, alphabetically (as the panels list them)."""
+        return sorted((g for g in self.strand_groups.values() if g.kind == kind),
+                      key=lambda g: g.name.casefold())
+
+    def groups_with(self, kind: str, strand: str) -> list[StrandGroup]:
+        """The groups `strand` is in, alphabetically."""
+        return [g for g in self.groups_of(kind) if g.has(strand)]
+
+    def _spelled(self, kind: str, names) -> list[str]:
+        """`names` in the board's spelling where it has them (a group lists strands as
+        the board writes them), duplicates dropped."""
+        spelling = {v.casefold(): v for v in self.all_values(kind)}
+        return clean_list([spelling.get(n.strip().casefold(), n) for n in names])
+
+    def create_strand_group(self, kind: str, name: str, members=()) -> StrandGroup | None:
+        """Make a group (one undo step). None if the name is blank or the kind already has
+        a group by that name."""
+        group = StrandGroup(kind, name, tuple(self._spelled(kind, members)))
+        if not group.kind or not group.name or group.key in self.strand_groups:
+            return None
+        self.strand_groups[group.key] = group
+        self.mark_modified()
+        return group
+
+    def update_strand_group(self, kind: str, name: str, *, new_name: str | None = None,
+                            members=None, description: str | None = None) -> bool:
+        """Rename a group, or replace its members or description (one undo step). Members
+        it loses stay on the board as saved strands (see _keep_dropped_strands). False if
+        nothing changed, the group is missing, or the new name is blank or taken."""
+        group = self.strand_group(kind, name)
+        if group is None:
+            return False
+        new = replace(group,
+                      name=group.name if new_name is None else new_name,
+                      members=group.members if members is None else tuple(self._spelled(kind, members)),
+                      description=group.description if description is None else description)
+        if not new.name or (new.key != group.key and new.key in self.strand_groups) or new == group:
+            return False
+        # Rebuilt, so a renamed group keeps its place in the order they were made.
+        self.strand_groups = {(new.key if k == group.key else k): (new if k == group.key else g)
+                              for k, g in self.strand_groups.items()}
+        self.mark_modified()
+        return True
+
+    def add_to_strand_group(self, kind: str, name: str, strands) -> int:
+        """Put strands in a group (one undo step); returns how many weren't in it already."""
+        group = self.strand_group(kind, name)
+        if group is None:
+            return 0
+        fresh = [s for s in self._spelled(kind, strands) if not group.has(s)]
+        if fresh:
+            self.update_strand_group(kind, name, members=[*group.members, *fresh])
+        return len(fresh)
+
+    def remove_from_strand_group(self, kind: str, name: str, strands) -> int:
+        """Take strands out of a group (one undo step); returns how many were in it."""
+        group = self.strand_group(kind, name)
+        if group is None:
+            return 0
+        keys = {s.strip().casefold() for s in strands}
+        kept = [m for m in group.members if m.casefold() not in keys]
+        if len(kept) != len(group.members):
+            self.update_strand_group(kind, name, members=kept)
+        return len(group.members) - len(kept)
+
+    def delete_strand_group(self, kind: str, name: str) -> bool:
+        """Forget a group (one undo step). Its strands stay on the board."""
+        group = self.strand_group(kind, name)
+        if group is None:
+            return False
+        del self.strand_groups[group.key]
+        self.mark_modified()
+        return True
+
+    def strand_group_choices(self) -> dict[str, dict[str, list[str]]]:
+        """{field: {group name: members}} for the strand groups that can be added to
+        cards: tags, characters and locations (a card has one status, so a group of
+        statuses is only for filtering)."""
+        return {f: {g.name: list(g.members) for g in self.groups_of(f)}
+                for f in BULK_LIST_FIELDS if self.groups_of(f)}
+
+    def strand_suggestions(self) -> dict:
+        """What the editors offer: every strand per field, and the strand groups (under
+        STRAND_GROUPS_KEY) whose strands a box can add in one go."""
+        out: dict = {f: self.all_values(f) for f in RENAMABLE_FIELDS}
+        out[STRAND_GROUPS_KEY] = self.strand_group_choices()
+        return out
+
+    def add_strands_to_cards(self, items, kind: str, names, what: str = "") -> int:
+        """Add strands to cards' tags, characters or locations, as one undo step (strand
+        cards have none of their own and are skipped). The status bar says what happened,
+        naming the strands as `what`. Returns how many cards changed."""
+        names = self._spelled(kind, names) if kind in BULK_LIST_FIELDS else []
+        targets = [i for i in items if not i.is_strand and i.card.id in self.cards]
+        what = what or ", ".join(names)
+        if not names or not targets:
+            if targets and kind in BULK_LIST_FIELDS:
+                self.notice.emit(f"{what[0].upper() + what[1:]} has no strands yet")
+            return 0
+        changed = apply_bulk_edit([i.card for i in targets], add={kind: names})
+        ids = {c.id for c in changed}
+        for i in targets:
+            if i.card.id in ids:
+                i.apply_data(i.card)  # tags can change a card's height
+        self._refit_ids({i.card.parent for i in targets if i.card.id in ids} - {""})
+        if changed:
+            self.mark_modified()
+            self.notice.emit(f"Added {what} to {len(changed)} card" + ("" if len(changed) == 1 else "s"))
+        else:
+            self.notice.emit(("That card" if len(targets) == 1 else "Those cards") + f" already had {what}")
+        return len(changed)
+
+    def add_strand_group_to_cards(self, items, kind: str, name: str) -> int:
+        """Add every strand in a strand group to cards (one undo step)."""
+        group = self.strand_group(kind, name)
+        if group is None:
+            return 0
+        return self.add_strands_to_cards(items, kind, group.members, f"the strand group “{group.name}”")
+
+    # ----- drag a strand group onto a card ---------------------------------------
+    def strand_group_drag_over(self, kind: str, pos: QPointF) -> bool:
+        """A strand group is dragged over pos: only a standard card takes it (it adds the
+        group's strands); groups, strand cards and the blank board don't."""
+        target = self.strand_drop_target(pos) if kind in BULK_LIST_FIELDS else None
+        card = target[1] if target is not None and target[0] == "card" else None
+        self._set_strand_hover(card)
+        self._show_ghost(None)
+        return card is not None
+
+    def drop_strand_group(self, kind: str, name: str, members, pos: QPointF) -> bool:
+        """Drop a strand group at pos: on a standard card its strands join the card's (one
+        undo step). `members` come with the drag, so it works from another window's board."""
+        self.strand_drag_done()
+        target = self.strand_drop_target(pos) if kind in BULK_LIST_FIELDS else None
+        if target is None or target[0] != "card":
+            return False
+        return self.add_strands_to_cards([target[1]], kind, members, f"the strand group “{name}”") > 0
+
+    def _rename_in_groups(self, kind: str, old: str, new: str) -> bool:
+        """A renamed strand keeps its place in its groups; renaming onto a strand
+        already in the same group merges the two entries."""
+        if not new.strip():
+            return False
+        changed = False
+        for key, g in list(self.strand_groups.items()):
+            if g.kind == kind and g.has(old):
+                renamed = tuple(rename_in_list(list(g.members), old, new))
+                if renamed != g.members:
+                    self.strand_groups[key] = replace(g, members=renamed)
+                    changed = True
+        return changed
+
+    def _drop_from_groups(self, kind: str, keys: set[str]) -> set[str]:
+        """Take strands (casefolded) out of every group; returns the ones that were in one."""
+        dropped: set[str] = set()
+        for key, g in list(self.strand_groups.items()):
+            if g.kind != kind:
+                continue
+            kept = tuple(m for m in g.members if m.casefold() not in keys)
+            if kept != g.members:
+                dropped |= {m.casefold() for m in g.members} - {m.casefold() for m in kept}
+                self.strand_groups[key] = replace(g, members=kept)
+        return dropped
 
     def open_rename_dialog(self, field_name: str = "tags", value: str = "") -> int:
         self.dialog_opening.emit()

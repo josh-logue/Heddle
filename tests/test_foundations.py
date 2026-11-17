@@ -18,7 +18,7 @@ def test_v3_fields_round_trip():
         connections=[ConnectionData("a", "b", "flashback", style="dashed", color="#B8475B")],
         display={"show_pov": False, "show_characters": True, "arrow_routing": "curved"})
     raw = board.to_dict()
-    assert raw["version"] == FORMAT_VERSION == 12
+    assert raw["version"] == FORMAT_VERSION == 13
     back = BoardData.from_dict(raw)
     assert back.cards[0].pov == "Rowan" and back.cards[0].characters == ["Mabel", "Rowan"]
     e = back.connections[0]

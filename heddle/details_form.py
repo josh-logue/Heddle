@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QComboBox, QFormLayout, QPlainTextEdit, QWidget
 
 from . import settings
 from .model import BUILTIN_STATUSES
-from .token_input import TokenInput
+from .token_input import STRAND_GROUPS_KEY, TokenInput
 
 STATUS_PRESETS = ["", *BUILTIN_STATUSES]
 
@@ -36,9 +36,13 @@ class DetailFields(QObject):
 
     def __init__(self, data, suggestions: dict[str, list[str]], parent: QWidget):
         super().__init__(parent)
-        self.tags_input = TokenInput(data.tags, suggestions.get("tags", []), "tag")
-        self.characters_input = TokenInput(data.characters, suggestions.get("characters", []), "character")
-        self.locations_input = TokenInput(data.locations, suggestions.get("locations", []), "location")
+        groups = suggestions.get(STRAND_GROUPS_KEY, {})  # strand groups a box can add in one go
+        self.tags_input = TokenInput(data.tags, suggestions.get("tags", []), "tag",
+                                     groups=groups.get("tags"))
+        self.characters_input = TokenInput(data.characters, suggestions.get("characters", []), "character",
+                                           groups=groups.get("characters"))
+        self.locations_input = TokenInput(data.locations, suggestions.get("locations", []), "location",
+                                          groups=groups.get("locations"))
 
         self._board_characters = list(suggestions.get("characters", []))
         self.pov_combo = ScrollSafeCombo()

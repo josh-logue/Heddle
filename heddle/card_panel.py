@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from .card_item import CardItem
 from .details_form import DetailFields
-from .model import KIND_GROUP, KIND_STRAND, RENAMABLE_FIELDS, CardData
+from .model import KIND_GROUP, KIND_STRAND, CardData
 
 COMMIT_DELAY_MS = 700  # what's typed is saved this long after you stop typing
 
@@ -162,8 +162,7 @@ class CardPanel(QWidget):
         self.desc_edit.setPlaceholderText("What happens…")
         if card.kind != KIND_GROUP:  # groups have no description of their own
             form.addRow("Description", self.desc_edit)
-        suggestions = {f: self.scene.all_values(f) for f in RENAMABLE_FIELDS}
-        self._fields = DetailFields(card, suggestions, box)
+        self._fields = DetailFields(card, self.scene.strand_suggestions(), box)
         form.addRow("Tags", self._fields.tags_input)
         self._fields.add_detail_rows(form)
         self._fields.notes_edit.setMinimumHeight(60)

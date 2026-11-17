@@ -12,21 +12,32 @@ interface Props {
   placeholder?: string;
   /** The text still typed in the box, so OK can add it (as the desktop does by default). */
   onPending?: (text: string) => void;
+  /** Strand groups ({name: strands}): offered after the strands (see groupLabel); picking one
+   *  adds all its strands. Typing a group's bare name still adds a strand by that name. */
+  groups?: ReadonlyMap<string, readonly string[]>;
+}
+
+/** How a strand group is offered among a box's suggestions: "Family · strand group (3)". */
+export function groupLabel(name: string, members: readonly string[]): string {
+  return `${name} · strand group (${members.length})`;
 }
 
 /** Several values as removable chips, plus a box to type more (heddle/token_input.py).
  *  Enter or a comma adds what's typed; an existing spelling on the board is reused;
  *  Backspace in an empty box removes the last chip. */
-export function TokenInput({ label, values, onChange, suggestions, noun, placeholder, onPending }: Props) {
+export function TokenInput({ label, values, onChange, suggestions, noun, placeholder, onPending, groups }: Props) {
   const [text, setText] = useState("");
   const listId = useId();
   const inputId = useId();
+  const labels = new Map([...(groups ?? new Map<string, readonly string[]>())]
+    .filter(([, members]) => members.length).map(([name, members]) => [groupLabel(name, members), members]));
+  const spell = (typed: string) => suggestions.find((s) => casefold(s) === casefold(typed)) ?? typed;
 
   const add = (raw: string) => {
     const typed = raw.trim();
     if (!typed) return;
-    const known = suggestions.find((s) => casefold(s) === casefold(typed));
-    onChange(cleanList([...values, known ?? typed]));
+    const members = labels.get(typed); // a strand group's suggestion: all its strands
+    onChange(cleanList([...values, ...(members ? members.map((m) => spell(m)) : [spell(typed)])]));
     setText("");
     onPending?.("");
   };
@@ -59,6 +70,7 @@ export function TokenInput({ label, values, onChange, suggestions, noun, placeho
                onChange={(e) => {
                  const v = e.target.value;
                  if (v.endsWith(",")) add(v.slice(0, -1));
+                 else if (labels.has(v)) add(v); // picked from the list: no one types a group's label
                  else {
                    setText(v);
                    onPending?.(v);
@@ -67,6 +79,9 @@ export function TokenInput({ label, values, onChange, suggestions, noun, placeho
                onKeyDown={key} onBlur={() => onPending?.(text)} />
         <datalist id={listId}>
           {suggestions.filter((s) => !have.has(casefold(s))).map((s) => <option key={s} value={s} />)}
+          {/* Strand groups follow the strands, while they'd still add something. */}
+          {[...labels].filter(([, members]) => members.some((m) => !have.has(casefold(m))))
+            .map(([l]) => <option key={`group:${l}`} value={l} />)}
         </datalist>
       </div>
     </div>

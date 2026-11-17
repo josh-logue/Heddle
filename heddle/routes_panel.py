@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import theme
-from .model import RENAMABLE_FIELDS, RouteData, copy_route, title_labels
+from .model import RouteData, copy_route, title_labels
 from .route_dialog import RouteDialog
 from .routes import (
     INHERITED_FIELDS, RouteListing, default_title, key_cards, list_routes, loop_details, merged_fields,
@@ -290,7 +290,7 @@ class RoutesPanel(QWidget):
         data = self.scene.route_data(key)
         data = copy_route(data) if data is not None else RouteData(key=list(key))
         cards = self.card_map()
-        suggestions = {f: self.scene.all_values(f) for f in RENAMABLE_FIELDS}
+        suggestions = self.scene.strand_suggestions()
         dialog = RouteDialog(data, self.steps(key),
                              default_title(key, cards, self.stops.get(key), self.title_map()),
                              suggestions, self)

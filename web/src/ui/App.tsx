@@ -30,7 +30,7 @@ import { SearchBar } from "./SearchBar.tsx";
 import { BoardOptions, GoToCard, MultiEdit, Replace, strandInfoMap } from "./Tools.tsx";
 import { CardListPanel } from "./panels/CardListPanel.tsx";
 import { StrandsPanel, KIND_ONE, KIND_LABELS } from "./panels/StrandsPanel.tsx";
-import { ApplyFields, RenameStrand, StrandChecklist } from "./StrandDialogs.tsx";
+import { ApplyFields, RenameStrand, StrandChecklist, StrandGroupDialog } from "./StrandDialogs.tsx";
 import { RENAMABLE_FIELDS, type StrandKind } from "../core/model.ts";
 import { casefold } from "../core/pystr.ts";
 import { COLORS_KEY, strandsOf, stateFromBoard } from "../board/store.ts";
@@ -78,6 +78,8 @@ type Modal =
   | { kind: "checklist"; title: string; intro: string; values: Record<string, string[]>; okLabel: string;
       extra?: Record<string, string[]>; extraLabel?: string; onOk: (chosen: Record<string, string[]>) => void }
   | { kind: "applyFields"; strandKind: StrandKind; source: string }
+  | { kind: "strandGroup"; strandKind: StrandKind; name?: string; picked?: Partial<Record<StrandKind, string[]>>;
+      done: (kind: StrandKind, name: string) => void }
   | { kind: "route"; key: string[]; steps: string[]; defaultName: string }
   | { kind: "thread" }
   | { kind: "choice"; title: string; message: string; choices: ChoiceButton<string>[]; cancel: string; resolve: (v: string) => void }
@@ -962,6 +964,10 @@ export function App() {
         rename: (k, v) => renameStrand(k, v),
         removeUnused,
         applyFields: (k, v) => setModal({ kind: "applyFields", strandKind: k, source: v }),
+        menu: (items, x, y) => setModal({ kind: "menu", items, x, y }),
+        newGroup: (k, picked, done) => setModal({ kind: "strandGroup", strandKind: k, picked, done }),
+        renameGroup: (k, name, done) => setModal({ kind: "strandGroup", strandKind: k, name, done: (_k, n) => done(n) }),
+        notice: setNotice,
         selectCards: (ids) => showListed(ids, false),
         addToBoard: (k, v) => {
           if (!canvas) return;
@@ -1285,6 +1291,15 @@ export function App() {
                        setNotice(changed ? `Added ${added} field${added === 1 ? "" : "s"} to ${changed} ${changed === 1 ? KIND_ONE[k] : plural}`
                          : targets.length === 1 ? `That ${KIND_ONE[k]} already has these fields` : `Those ${plural} already have these fields`);
                      }} />
+      )}
+      {store && modal?.kind === "strandGroup" && (
+        <StrandGroupDialog store={store} kind={modal.strandKind} name={modal.name} picked={modal.picked} onClose={closeModal}
+                           onOk={(k, name, members) => {
+                             closeModal();
+                             const made = modal.name === undefined ? store.createStrandGroup(k, name, members) !== null
+                               : store.updateStrandGroup(k, modal.name, { name });
+                             if (made) modal.done(k, name);
+                           }} />
       )}
       {store && modal?.kind === "route" && (
         <RouteDialog store={store} routeKey={modal.key} steps={modal.steps} defaultName={modal.defaultName} onClose={closeModal} />

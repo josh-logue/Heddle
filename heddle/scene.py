@@ -28,7 +28,8 @@ from .model import (
     KIND_GROUP, BoardData, CardData,
     ConnectionData,
     board_values,
-    new_id, RENAMABLE_FIELDS, apply_bulk_edit, clone_fragment, copy_route, replace_text, RouteData, StrandInfo,
+    new_id, apply_bulk_edit, clone_fragment, copy_route, replace_text, RouteData, StrandInfo,
+    StrandGroup,
     title_labels,
 )
 from .multi_edit import MultiEditDialog
@@ -75,6 +76,8 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixi
         # Strands' descriptions and pictures (Strands panel), by (kind, casefolded
         # name); only strands with something set. Picture paths are absolute here.
         self.strand_info: dict[tuple[str, str], StrandInfo] = {}
+        # Strand groups (Strands panel), by (kind, casefolded name), in the order made.
+        self.strand_groups: dict[tuple[str, str], StrandGroup] = {}
         # While exporting an image: "plain" (canvas colour, no grid), "transparent"
         # (no background), or None (normal drawing).
         self.export_background: str | None = None
@@ -1562,8 +1565,7 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixi
             return 0
         self.dialog_opening.emit()
         cards = [i.card for i in items]
-        dialog = MultiEditDialog(len(items), self.custom_colors,
-                                 {f: self.all_values(f) for f in RENAMABLE_FIELDS},
+        dialog = MultiEditDialog(len(items), self.custom_colors, self.strand_suggestions(),
                                  {f: board_values(cards, f) for f in BULK_LIST_FIELDS},
                                  self._dialog_parent())
         if not dialog.exec():
@@ -1639,7 +1641,7 @@ class BoardScene(HistoryMixin, StrandsMixin, RoomMixin, MenusMixin, CommandsMixi
         if card.scene() is not self:
             return
         self.dialog_opening.emit()
-        suggestions = {f: self.all_values(f) for f in RENAMABLE_FIELDS}
+        suggestions = self.strand_suggestions()
         dialog = CardDialog(card.card, self.custom_colors, self._dialog_parent(), suggestions,
                             self.member_candidates(card), self.color_usage(exclude=card))
         dialog.set_story_tools(bool(self.display.get("story_tools", True)))

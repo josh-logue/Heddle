@@ -40,7 +40,7 @@ def test_round_trip_keeps_field_order():
     board = BoardData(strands=[StrandInfo("characters", "Mabel", "Baker",
                                           fields=[("Ancestry", "human"), ("Age", "61")])])
     raw = board.to_dict()
-    assert raw["version"] == FORMAT_VERSION == 12
+    assert raw["version"] == FORMAT_VERSION == 13
     assert raw["strands"][0]["fields"] == [{"name": "Ancestry", "value": "human"},
                                            {"name": "Age", "value": "61"}]
     back = BoardData.from_dict(raw)

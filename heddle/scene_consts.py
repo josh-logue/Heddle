@@ -10,7 +10,7 @@ from .layout import V_GAP
 from .model import (
     CardData,
     ConnectionData,
-    RouteData, StrandInfo,
+    RouteData, StrandGroup, StrandInfo,
 )
 
 
@@ -31,6 +31,7 @@ _CARD_FIELDS = tuple(f.name for f in fields(CardData))  # order of values in und
 _CONN_FIELDS = tuple(f.name for f in fields(ConnectionData))
 _ROUTE_FIELDS = tuple(f.name for f in fields(RouteData))
 _STRAND_FIELDS = tuple(f.name for f in fields(StrandInfo))
+_GROUP_FIELDS = tuple(f.name for f in fields(StrandGroup))
 # Between two descriptions joined when strands merge (renaming one to the other's name).
 MERGED_DESCRIPTIONS = "\n\n———\n\n"
 # Display options that change a card's size, or just what's drawn on it (cards cache

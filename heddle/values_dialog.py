@@ -23,7 +23,8 @@ ROLE_VALUE = Qt.ItemDataRole.UserRole
 class ValueChecklistDialog(QDialog):
     """`values` maps category -> list of values; all start checked. With `extra` (more
     values, same shape) and `extra_label`, a checkbox below the list adds those to it,
-    marked ✎ (Remove Unused Strands: strands that have a description, picture or fields)."""
+    marked ✎ (Remove Unused Strands: strands that have a description, picture or fields,
+    or are in a strand group)."""
 
     def __init__(self, title: str, intro: str, values: dict[str, list[str]], ok_text: str,
                  parent: QWidget | None = None, extra: dict[str, list[str]] | None = None,
@@ -96,7 +97,8 @@ class ValueChecklistDialog(QDialog):
                 ticked = was is None or v in was.get(cat, []) or v in more
                 child.setCheckState(0, Qt.CheckState.Checked if ticked else Qt.CheckState.Unchecked)
                 if v in more:
-                    child.setToolTip(0, "Has a description, picture or fields, which will be removed too")
+                    child.setToolTip(0, "Has a description, picture or fields, or is in a strand group: "
+                                       "those go too")
                 if cat == COLORS_KEY:
                     child.setIcon(0, swatch_icon(v))
             top.setExpanded(True)

@@ -41,6 +41,7 @@ export function useDetailFields(store: BoardStore, data: DetailValues, prefix: s
   const [notes, setNotes] = useState(data.notes);
   const pending = useRef<Record<string, string>>({}).current;
   const suggest = (f: "tags" | "characters" | "locations" | "status") => store.allValues(f);
+  const groups = store.strandGroupChoices(); // strand groups a box can add in one go
   const statuses = [...BUILTIN_STATUSES, ...suggest("status").filter((s) => !BUILTIN_STATUSES.some((b) => casefold(b) === casefold(s)))];
   // POV offers this item's own characters first, then the rest of the board's.
   const povChoices = [...characters, ...suggest("characters").filter((c) => !characters.some((x) => casefold(x) === casefold(c)))];
@@ -60,7 +61,7 @@ export function useDetailFields(store: BoardStore, data: DetailValues, prefix: s
   const fields = (
     <>
       <TokenInput label="Characters" values={characters} onChange={setCharacters} suggestions={suggest("characters")}
-                  noun="character" onPending={(t) => (pending.characters = t)} />
+                  noun="character" onPending={(t) => (pending.characters = t)} groups={groups.characters} />
       <div className="field">
         <label htmlFor={`${prefix}-pov`}>POV</label>
         <input id={`${prefix}-pov`} type="text" list={`${prefix}-pov-choices`} value={pov} placeholder="Whose point of view? (optional)"
@@ -69,7 +70,7 @@ export function useDetailFields(store: BoardStore, data: DetailValues, prefix: s
         <datalist id={`${prefix}-pov-choices`}>{povChoices.map((c) => <option key={c} value={c} />)}</datalist>
       </div>
       <TokenInput label="Locations" values={locations} onChange={setLocations} suggestions={suggest("locations")}
-                  noun="location" onPending={(t) => (pending.locations = t)} />
+                  noun="location" onPending={(t) => (pending.locations = t)} groups={groups.locations} />
       <div className="field">
         <label htmlFor={`${prefix}-status`}>Status</label>
         <input id={`${prefix}-status`} type="text" list={`${prefix}-status-choices`} value={status} onChange={(e) => setStatus(e.target.value)} />

@@ -12,12 +12,13 @@ import { StoryGraph } from "../core/graph.ts";
 import { History, deepEqual } from "../core/history.ts";
 import { V_GAP, arrange, edgeKey, makeNode } from "../core/layout.ts";
 import {
-  BUILTIN_STATUSES, CARD_COLORS, KIND_GROUP, KIND_STRAND, RENAMABLE_FIELDS, applyFields, boardValues, cleanList,
+  BUILTIN_STATUSES, BULK_LIST_FIELDS, CARD_COLORS, KIND_GROUP, KIND_STRAND, RENAMABLE_FIELDS, applyFields, boardValues, cleanList,
   countValues, makeStrandInfo, mergeFields, renameInList, renameValue, strandIsBlank, strandKey, type StrandKind,
   applyBulkEdit, boardToJson, cleanDisplay, cloneFragment, copyCard, makeBoard, makeCard, newId,
   replaceText, type BulkEdit, type TextField,
   type BoardData, type CardData, type ConnectionData, type Display, type RouteData, type SavedValues,
-  type StrandInfo, copyRoute, routeIsBlank, routeKeyId, titleLabels,
+  type ListField, type StrandGroup, type StrandInfo, copyRoute, groupHas, makeStrandGroup, routeIsBlank, routeKeyId,
+  strandGroupKey, titleLabels,
 } from "../core/model.ts";
 import {
   CARD_WIDTH, GROUP_MIN_BODY, GROUP_MIN_WIDTH, GROUP_PAD, Layouter, Structure, paintOrder, type CardBox, type Rect,
@@ -25,20 +26,22 @@ import {
 import { labelTexts, routeArrows, type ArrowShape } from "./routing.ts";
 import { lineHeight, type TextMeasurer } from "./text.ts";
 import { matches as filterMatches, type Extras, type FilterCounts } from "../core/filters.ts";
-import { casefold, strip } from "../core/pystr.ts";
+import { casefold, sortedBy, strip } from "../core/pystr.ts";
 
 /** Between two descriptions joined when strands merge (renaming one to the other's name). */
 export const MERGED_DESCRIPTIONS = "\n\n———\n\n";
 /** Where "Remove unused" and "Import" list custom palette colours beside the strands. */
 export const COLORS_KEY = "custom_colors";
 
-/** Every strand of a field on a board: on cards, on routes, saved, with details, stood for
- *  by a strand card, and for statuses the built-in ones (heddle/scene_strands.all_values). */
+/** Every strand of a field on a board: on cards, on routes, saved, with details, in a
+ *  strand group, stood for by a strand card, and for statuses the built-in ones
+ *  (heddle/scene_strands.all_values). */
 export function strandsOf(s: BoardState, field: StrandKind): string[] {
   const extra: string[] = [...(s.saved_values[field] ?? [])];
   if (field === "status") extra.push(...BUILTIN_STATUSES);
   for (const [spelling] of countValues(s.routes, field).values()) extra.push(spelling);
   for (const info of s.strands) if (info.kind === field) extra.push(info.name);
+  for (const g of s.strand_groups) if (g.kind === field) extra.push(...g.members);
   for (const c of s.cards) if (c.kind === KIND_STRAND && c.strand_kind === field) extra.push(c.strand);
   return boardValues(s.cards, field, extra);
 }
@@ -81,6 +84,7 @@ export interface BoardState {
   readonly display: Display;
   readonly routes: readonly RouteData[];
   readonly strands: readonly StrandInfo[];
+  readonly strand_groups: readonly StrandGroup[];
 }
 
 const sameList = <T>(a: readonly T[], b: readonly T[]) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -94,13 +98,14 @@ const equalList = <T>(a: readonly T[], b: readonly T[]) =>
 export function sameState(a: BoardState, b: BoardState): boolean {
   return equalList(a.cards, b.cards) && equalList(a.connections, b.connections)
     && deepEqual(a.custom_colors, b.custom_colors) && deepEqual(a.saved_values, b.saved_values)
-    && deepEqual(a.display, b.display) && deepEqual(a.routes, b.routes) && deepEqual(a.strands, b.strands);
+    && deepEqual(a.display, b.display) && deepEqual(a.routes, b.routes) && deepEqual(a.strands, b.strands)
+    && deepEqual(a.strand_groups, b.strand_groups);
 }
 
 export function stateFromBoard(b: BoardData): BoardState {
   return {
     cards: b.cards, connections: b.connections, custom_colors: b.custom_colors, saved_values: b.saved_values,
-    display: b.display, routes: b.routes, strands: b.strands,
+    display: b.display, routes: b.routes, strands: b.strands, strand_groups: b.strand_groups,
   };
 }
 
@@ -108,6 +113,7 @@ export function boardFromState(s: BoardState): BoardData {
   return makeBoard({
     cards: [...s.cards], connections: [...s.connections], custom_colors: [...s.custom_colors],
     saved_values: s.saved_values, display: s.display, routes: [...s.routes], strands: [...s.strands],
+    strand_groups: [...s.strand_groups],
   });
 }
 
@@ -1160,7 +1166,11 @@ export class BoardStore {
     renameValue(routes as unknown as CardData[], field, old, name);
     const saved = { ...this.state.saved_values };
     if (saved[field]) saved[field] = renameInList(saved[field]!, old, name);
-    this.commit({ ...this.state, cards, routes, saved_values: saved, strands: this.renamedDetails(field, old, name) });
+    // A renamed strand keeps its place in its groups (onto a strand already there: merged).
+    const strand_groups = this.state.strand_groups.map((g) =>
+      g.kind === field && groupHas(g, old) ? { ...g, members: renameInList(g.members, old, name) } : g);
+    this.commit({ ...this.state, cards, routes, saved_values: saved, strands: this.renamedDetails(field, old, name),
+      strand_groups });
     return changed.size + strandCards;
   }
 
@@ -1209,7 +1219,8 @@ export class BoardStore {
   }
 
   /** Strands nothing uses (no card, route or strand card), per field: [those without
-   *  details (saved ones only), those with a description, picture or fields]. */
+   *  details (saved ones only), those with a description, picture or fields, or in a strand
+   *  group]. */
   unusedStrands(): [Partial<Record<StrandKind, string[]>>, Partial<Record<StrandKind, string[]>>] {
     const plain: Partial<Record<StrandKind, string[]>> = {};
     const detailed: Partial<Record<StrandKind, string[]>> = {};
@@ -1217,10 +1228,11 @@ export class BoardStore {
       const used = new Set([...this.strandUsage(f).keys(), ...this.strandCardCounts(f).keys()]);
       if (f === "status") for (const b of BUILTIN_STATUSES) used.add(casefold(b)); // built in: never unused
       const saved = new Set((this.state.saved_values[f] ?? []).map(casefold));
+      const grouped = new Set(this.state.strand_groups.filter((g) => g.kind === f).flatMap((g) => g.members.map(casefold)));
       for (const name of this.allValues(f)) {
         const key = casefold(name);
         if (used.has(key)) continue;
-        if (this.strand(f, name)) (detailed[f] ??= []).push(name);
+        if (this.strand(f, name) || grouped.has(key)) (detailed[f] ??= []).push(name);
         else if (saved.has(key)) (plain[f] ??= []).push(name);
       }
     }
@@ -1257,6 +1269,7 @@ export class BoardStore {
     removed += this.state.custom_colors.length - custom.length;
     const saved = { ...this.state.saved_values };
     let strands = [...this.state.strands];
+    let groups = [...this.state.strand_groups];
     for (const [f, gone] of Object.entries(values) as [StrandKind, string[]][]) {
       if (!(RENAMABLE_FIELDS as readonly string[]).includes(f)) continue;
       const keys = new Set(gone.map((v) => casefold(v)));
@@ -1270,12 +1283,19 @@ export class BoardStore {
         }
         return true;
       });
+      groups = groups.map((g) => {
+        if (g.kind !== f) return g;
+        const kept = g.members.filter((m) => !keys.has(casefold(m)));
+        if (kept.length === g.members.length) return g;
+        for (const m of g.members) if (keys.has(casefold(m))) goneKeys.add(casefold(m));
+        return { ...g, members: kept };
+      });
       removed += goneKeys.size;
       for (const k of goneKeys) this.letGo.add(`${f}\u0000${k}`);
       if (after.length) saved[f] = after;
       else delete saved[f];
     }
-    if (removed) this.commit({ ...this.state, custom_colors: custom, saved_values: saved, strands });
+    if (removed) this.commit({ ...this.state, custom_colors: custom, saved_values: saved, strands, strand_groups: groups });
     return removed;
   }
 
@@ -1348,6 +1368,132 @@ export class BoardStore {
     if (card[kind].some((v) => casefold(v) === casefold(name))) return [false, `“${title}” already has ${name}`];
     this.updateCard(card.id, { [kind]: [...card[kind], name] });
     return [true, ""];
+  }
+
+  // ----- strand groups (heddle/scene_strands.py) -------------------------------------------
+
+  /** A strand group by kind and name (ignoring case), if the board has it. */
+  strandGroup(kind: string, name: string): StrandGroup | undefined {
+    const key = strandKey(kind, strip(name));
+    return this.state.strand_groups.find((g) => strandGroupKey(g) === key);
+  }
+
+  /** A field's strand groups, alphabetically (as the panels list them). */
+  groupsOf(kind: StrandKind): StrandGroup[] {
+    return sortedBy(this.state.strand_groups.filter((g) => g.kind === kind), (g) => casefold(g.name));
+  }
+
+  /** The strand groups `strand` is in, alphabetically. */
+  groupsWith(kind: StrandKind, strand: string): StrandGroup[] {
+    return this.groupsOf(kind).filter((g) => groupHas(g, strand));
+  }
+
+  /** `names` in the board's spelling where it has them, duplicates dropped. */
+  private spelled(kind: StrandKind, names: Iterable<string>): string[] {
+    const spelling = new Map(this.allValues(kind).map((v) => [casefold(v), v]));
+    return cleanList([...names].map((n) => spelling.get(casefold(strip(n))) ?? n));
+  }
+
+  /** Make a strand group (one undo step). Null if the name is blank or taken in its kind. */
+  createStrandGroup(kind: StrandKind, name: string, members: Iterable<string> = []): StrandGroup | null {
+    const group = makeStrandGroup({ kind, name, members: this.spelled(kind, members) });
+    if (!group.kind || !group.name || this.strandGroup(kind, group.name)) return null;
+    this.commit({ ...this.state, strand_groups: [...this.state.strand_groups, group] });
+    return group;
+  }
+
+  /** Rename a strand group, or replace its strands or description (one undo step). Strands it
+   *  loses stay on the board as saved strands. False if nothing changed, it's missing, or the
+   *  new name is blank or taken. */
+  updateStrandGroup(kind: StrandKind, name: string, change: { name?: string; members?: Iterable<string>; description?: string }): boolean {
+    const group = this.strandGroup(kind, name);
+    if (!group) return false;
+    const next = makeStrandGroup({
+      kind, name: change.name ?? group.name,
+      members: change.members === undefined ? group.members : this.spelled(kind, change.members),
+      description: change.description ?? group.description,
+    });
+    const other = this.strandGroup(kind, next.name);
+    if (!next.name || (other && other !== group) || deepEqual(next, group)) return false;
+    this.commit({ ...this.state, strand_groups: this.state.strand_groups.map((g) => (g === group ? next : g)) });
+    return true;
+  }
+
+  /** Put strands in a strand group (one undo step); how many weren't in it already. */
+  addToStrandGroup(kind: StrandKind, name: string, strands: Iterable<string>): number {
+    const group = this.strandGroup(kind, name);
+    if (!group) return 0;
+    const fresh = this.spelled(kind, strands).filter((s) => !groupHas(group, s));
+    if (fresh.length) this.updateStrandGroup(kind, name, { members: [...group.members, ...fresh] });
+    return fresh.length;
+  }
+
+  /** Take strands out of a strand group (one undo step); how many were in it. */
+  removeFromStrandGroup(kind: StrandKind, name: string, strands: Iterable<string>): number {
+    const group = this.strandGroup(kind, name);
+    if (!group) return 0;
+    const keys = new Set([...strands].map((s) => casefold(strip(s))));
+    const kept = group.members.filter((m) => !keys.has(casefold(m)));
+    if (kept.length !== group.members.length) this.updateStrandGroup(kind, name, { members: kept });
+    return group.members.length - kept.length;
+  }
+
+  /** Forget a strand group (one undo step). Its strands stay on the board. */
+  deleteStrandGroup(kind: StrandKind, name: string): boolean {
+    const group = this.strandGroup(kind, name);
+    if (!group) return false;
+    this.commit({ ...this.state, strand_groups: this.state.strand_groups.filter((g) => g !== group) });
+    return true;
+  }
+
+  /** The strand groups that can be added to cards, by field: tags, characters and locations
+   *  (a card has one status, so a group of statuses is only for filtering). Maps keep the
+   *  names in order whatever they look like ("2024"). */
+  strandGroupChoices(): Partial<Record<ListField, Map<string, string[]>>> {
+    const out: Partial<Record<ListField, Map<string, string[]>>> = {};
+    for (const f of BULK_LIST_FIELDS) {
+      const groups = this.groupsOf(f);
+      if (groups.length) out[f] = new Map(groups.map((g) => [g.name, [...g.members]]));
+    }
+    return out;
+  }
+
+  /** Add strands to cards' tags, characters or locations, as one undo step (strand cards have
+   *  none of their own and are skipped). `what` names them in the notice. Returns [cards
+   *  changed, a notice to show]. */
+  addStrandsToCards(ids: Iterable<string>, kind: StrandKind, names: Iterable<string>, what = ""): [number, string] {
+    if (!(BULK_LIST_FIELDS as readonly string[]).includes(kind)) return [0, ""];
+    const list = this.spelled(kind, names);
+    const targets = [...ids].filter((id) => this.card(id) && this.card(id)!.kind !== KIND_STRAND);
+    const label = what || list.join(", ");
+    if (!targets.length) return [0, ""];
+    if (!list.length) return [0, `${label[0]!.toUpperCase()}${label.slice(1)} has no strands yet`];
+    const n = this.bulkEdit(targets, { add: { [kind]: list } });
+    if (n) return [n, `Added ${label} to ${n} card${n === 1 ? "" : "s"}`];
+    return [0, `${targets.length === 1 ? "That card" : "Those cards"} already had ${label}`];
+  }
+
+  /** Add every strand in a strand group to cards (one undo step). [cards changed, notice]. */
+  addStrandGroupToCards(ids: Iterable<string>, kind: StrandKind, name: string): [number, string] {
+    const group = this.strandGroup(kind, name);
+    if (!group) return [0, ""];
+    return this.addStrandsToCards(ids, kind, group.members, `the strand group “${group.name}”`);
+  }
+
+  /** The card a strand group dropped at (x, y) would join: only a standard card takes one. */
+  strandGroupDropTarget(kind: StrandKind, x: number, y: number): string | null {
+    if (!(BULK_LIST_FIELDS as readonly string[]).includes(kind)) return null;
+    const target = this.strandDropTarget(x, y);
+    return target?.[0] === "card" ? target[1] : null;
+  }
+
+  /** Drop a strand group at (x, y): on a standard card its strands join the card's (one undo
+   *  step). `members` come with the drag. Returns [changed, a notice to show]. */
+  dropStrandGroup(kind: StrandKind, name: string, members: Iterable<string>, x: number, y: number): [boolean, string] {
+    const id = this.strandGroupDropTarget(kind, x, y);
+    if (!id) return [false, ""];
+    const [n, notice] = this.addStrandsToCards([id], kind, members, `the strand group “${name}”`);
+    return [n > 0, notice];
   }
 
   /** A card standing for a strand, centred on (x, y), in `group` if given: one undo step. */

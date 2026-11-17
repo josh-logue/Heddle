@@ -28,7 +28,7 @@ export function RouteDialog({ store, routeKey, steps, defaultName, onClose }: {
         <input id="route-name" type="text" value={name} placeholder={defaultName} onChange={(e) => setName(e.target.value)} />
       </div>
       <TokenInput label="Tags" values={details.tags} onChange={details.setTags} suggestions={store.allValues("tags")} noun="tag"
-                  onPending={(t) => details.setPending("tags", t)} />
+                  onPending={(t) => details.setPending("tags", t)} groups={store.strandGroupChoices().tags} />
       {details.fields}
       <div className="field">
         <span className="label">Inherit</span>

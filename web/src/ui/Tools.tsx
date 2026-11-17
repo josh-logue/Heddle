@@ -161,6 +161,7 @@ export function MultiEdit({ store, onDone, onClose }: { store: BoardStore; onDon
   const [remove, setRemove] = useState<Record<string, string[]>>({ tags: [], characters: [], locations: [] });
   const [status, setStatus] = useState(KEEP);
   const pending = useRef<Record<string, string>>({}).current;
+  const groups = store.strandGroupChoices(); // picking one adds (or removes) all its strands
   const colours = [...CARD_COLORS, ...store.state.custom_colors.filter((c) => !(CARD_COLORS as readonly string[]).includes(c))];
   const statuses = [...BUILTIN_STATUSES, ...store.allValues("status").filter((s) => !BUILTIN_STATUSES.some((b) => casefold(b) === casefold(s)))];
   const ok = () => {
@@ -190,10 +191,10 @@ export function MultiEdit({ store, onDone, onClose }: { store: BoardStore; onDon
         <div key={f}>
           <TokenInput label={`Add ${f}`} values={add[f]!} onChange={(v) => setAdd({ ...add, [f]: v })} suggestions={store.allValues(f)}
                       noun={SINGULAR[f]!} placeholder={`${f[0]!.toUpperCase()}${f.slice(1)} to add to every card`}
-                      onPending={(t) => (pending[`add-${f}`] = t)} />
+                      onPending={(t) => (pending[`add-${f}`] = t)} groups={groups[f]} />
           <TokenInput label={`Remove ${f}`} values={remove[f]!} onChange={(v) => setRemove({ ...remove, [f]: v })}
                       suggestions={boardValues(cards, f)} noun={SINGULAR[f]!} placeholder={`${f[0]!.toUpperCase()}${f.slice(1)} to remove from every card`}
-                      onPending={(t) => (pending[`remove-${f}`] = t)} />
+                      onPending={(t) => (pending[`remove-${f}`] = t)} groups={groups[f]} />
         </div>
       ))}
       <div className="field"><label htmlFor="m-status">Status</label>

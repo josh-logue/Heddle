@@ -1,7 +1,8 @@
 // The right-click menus for a card, group, arrow or the canvas (heddle/scene_menus.py),
 // as data: the UI draws them.
 
-import { ARROW_STYLES, CARD_COLORS, COLOR_NAMES } from "../core/model.ts";
+import { ARROW_STYLES, CARD_COLORS, COLOR_NAMES, KIND_STRAND, type CardData, type ListField } from "../core/model.ts";
+import { casefold } from "../core/pystr.ts";
 import type { BoardStore } from "../board/store.ts";
 import type { Hover } from "./draw.ts";
 
@@ -38,6 +39,34 @@ export interface MenuActions {
 }
 
 const STYLE_LABELS: Record<string, string> = { solid: "Solid", dashed: "Dashed", dotted: "Dotted" };
+
+const KIND_MENU_LABELS: Record<string, string> = { tags: "Tags", characters: "Characters", locations: "Locations" };
+
+/** Add Strand Group ▸ (heddle/scene_menus._add_strand_group_menu): every strand group of
+ *  tags, characters and locations, in a submenu per kind when there's more than one kind,
+ *  adding its strands to the selected cards. Greyed when they all have it in full, or it's
+ *  empty. Nothing when the board has no strand groups. */
+function strandGroupItems(store: BoardStore, act: MenuActions): MenuItem[] {
+  const choices = Object.entries(store.strandGroupChoices()) as [ListField, Map<string, string[]>][];
+  if (!choices.length) return [];
+  const targets = [...store.selected].map((id) => store.card(id)).filter((c) => c && c.kind !== KIND_STRAND) as CardData[];
+  const entries = (kind: ListField, groups: Map<string, string[]>): MenuItem[] => [...groups].map(([name, members]) => {
+    const keys = members.map(casefold);
+    return {
+      label: `${name}   (${members.length})`,
+      disabled: !keys.length || targets.every((c) => keys.every((k) => c[kind].some((v) => casefold(v) === k))),
+      action: () => {
+        const [, notice] = store.addStrandGroupToCards(targets.map((c) => c.id), kind, name);
+        if (notice) act.notice(notice);
+      },
+    };
+  });
+  return [{
+    label: "Add Strand Group",
+    submenu: choices.length === 1 ? entries(...choices[0]!)
+      : choices.map(([kind, groups]) => ({ label: KIND_MENU_LABELS[kind]!, submenu: entries(kind, groups) })),
+  }];
+}
 
 /** Highlight paths, and with the story tools on: not part of the story, read from here,
  *  character threads (heddle/scene_menus._add_path_actions). */
@@ -111,8 +140,9 @@ export function buildMenu(store: BoardStore, hit: Hover, x: number, y: number, a
       { label: `Cut${suffix}`, keys: "Ctrl+X", action: act.cut },
       { label: `Duplicate${suffix}`, keys: "Ctrl+D", action: () => store.duplicate() },
       { label: "Paste here", keys: "Ctrl+V", action: () => act.pasteAt(x, y), disabled: !act.canPaste() },
-      SEPARATOR,
     );
+    if (!box.isStrand && !box.isGroup) items.push(...strandGroupItems(store, act));
+    items.push(SEPARATOR);
     if (store.structure.parentOf.has(id)) items.push({ label: "Remove from group", action: () => store.removeFromGroup(id) });
     if (box.isGroup) {
       items.push(

@@ -136,6 +136,10 @@ def small_boards() -> dict[str, dict]:
                       "fields": [{"name": "Age", "value": "41"}, {"name": "age", "value": "x"},
                                  {"name": "Home", "value": "Line\nbreak"}]},
                      {"kind": "tags", "name": "7", "picture": "pics/seven.png"}],
+            strand_groups=[{"kind": "characters", "name": "Kin", "members": ["zoë", "Mabel", "Keeper", "MABEL"],
+                            "description": "Grouped"},
+                           {"kind": "locations", "name": "Wards", "members": ["east ward", "North Ward"]},
+                           {"kind": "tags", "name": "Empty"}],
             routes=[{"key": ["t1", "t2", "t3"], "name": "Short way", "tags": ["x"]},
                     {"key": ["t1", "gone"], "name": "Lost route"}]),
     }
@@ -173,6 +177,11 @@ def broken_boards() -> dict[str, dict]:
                         {"kind": "tags", "name": "blank"},
                         {"name": "Default kind", "description": "tags is the default"},
                         {"kind": "tags", "name": "default KIND", "description": "duplicate"}],
+            "strand_groups": [{"kind": "places", "name": "x"}, {"kind": "tags", "name": " "},
+                              {"name": "Default\nkind", "members": "not a list", "description": 5},
+                              {"kind": "tags", "name": "DEFAULT kind", "members": ["dupe"]},
+                              {"kind": "characters", "name": "Odd", "members": [" Rowan ", 3, None, "", "rowan"]},
+                              "junk", 4],
             "version": "12",
         },
         "broken-duplicate-ids": {

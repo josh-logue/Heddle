@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 ZOOM_STEP = 1.15  # per mouse-wheel notch
 STRAND_MIME = "application/x-heddle-strand"  # a strand dragged from the Strands panel
+STRAND_GROUP_MIME = "application/x-heddle-strand-group"  # likewise, a strand group
 
 
 def board_files(mime) -> list[Path]:
@@ -40,6 +41,30 @@ def strand_from_mime(mime) -> tuple[str, str] | None:
     except (ValueError, KeyError, TypeError):
         return None
     return (kind, name) if isinstance(kind, str) and isinstance(name, str) else None
+
+
+def strand_group_mime(kind: str, name: str, members) -> QMimeData:
+    """Drag payload for a strand group: its kind, name and strands (so a board in another
+    window can take it without knowing the group)."""
+    mime = QMimeData()
+    mime.setData(STRAND_GROUP_MIME, json.dumps({"kind": kind, "name": name,
+                                                "members": list(members)}).encode("utf-8"))
+    mime.setText(name)
+    return mime
+
+
+def strand_group_from_mime(mime) -> tuple[str, str, list[str]] | None:
+    """(kind, name, members) of a dragged strand group, or None if the payload isn't one."""
+    if not mime.hasFormat(STRAND_GROUP_MIME):
+        return None
+    try:
+        raw = json.loads(bytes(mime.data(STRAND_GROUP_MIME)).decode("utf-8"))
+        kind, name, members = raw["kind"], raw["name"], raw["members"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not (isinstance(kind, str) and isinstance(name, str) and isinstance(members, list)):
+        return None
+    return kind, name, [m for m in members if isinstance(m, str)]
 
 
 class BoardView(QGraphicsView):
@@ -144,9 +169,12 @@ class BoardView(QGraphicsView):
         accept it (as a copy: the panel keeps the strand) unless that spot refuses it.
         Returns False if the drag isn't a strand."""
         strand = strand_from_mime(event.mimeData())
-        if strand is None:
+        group = strand_group_from_mime(event.mimeData()) if strand is None else None
+        if strand is None and group is None:
             return False
-        if self.scene().strand_drag_over(*strand, self.mapToScene(event.position().toPoint())):
+        pos = self.mapToScene(event.position().toPoint())
+        if (self.scene().strand_drag_over(*strand, pos) if strand is not None
+                else self.scene().strand_group_drag_over(group[0], pos)):
             event.setDropAction(Qt.DropAction.CopyAction)
             event.accept()
         else:
@@ -156,7 +184,8 @@ class BoardView(QGraphicsView):
     def dragEnterEvent(self, event) -> None:
         if board_files(event.mimeData()):
             event.acceptProposedAction()
-        elif strand_from_mime(event.mimeData()) is not None:
+        elif strand_from_mime(event.mimeData()) is not None or \
+                strand_group_from_mime(event.mimeData()) is not None:
             self._strand_over(event)
             event.accept()  # always, so moves keep coming (each move decides the cursor)
         else:
@@ -175,11 +204,14 @@ class BoardView(QGraphicsView):
     def dropEvent(self, event) -> None:
         files = board_files(event.mimeData())
         strand = strand_from_mime(event.mimeData())
+        group = strand_group_from_mime(event.mimeData())
         if files:
             event.acceptProposedAction()
             self.files_dropped.emit(files)
-        elif strand is not None:
-            if self.scene().drop_strand(*strand, self.mapToScene(event.position().toPoint())):
+        elif strand is not None or group is not None:
+            pos = self.mapToScene(event.position().toPoint())
+            if (self.scene().drop_strand(*strand, pos) if strand is not None
+                    else self.scene().drop_strand_group(*group, pos)):
                 event.setDropAction(Qt.DropAction.CopyAction)
                 event.accept()
                 self.setFocus()  # so Ctrl+Z undoes it straight away

@@ -7,7 +7,12 @@ pane stays usable in a narrow dock.
 Pictures are linked, not copied: the board keeps the image's path (see
 model.StrandInfo). A picture whose file has gone shows its path and a Relink button.
 
-A strand can be dragged from the list onto the board (see BoardScene.drop_strand)."""
+A strand can be dragged from the list onto the board (see BoardScene.drop_strand).
+
+Strand groups (model.StrandGroup; always "strand group" in the UI, since a "group" on the
+board is a card frame) are listed first in their kind's section, as folder rows
+with their members under them; strands in no group follow. A strand in two groups shows
+under both. Picking a group shows its name, description and a member checklist."""
 from __future__ import annotations
 
 import os
@@ -19,14 +24,16 @@ from PySide6.QtGui import (
     QDesktopServices, QDrag, QFont, QFontMetrics, QImageReader, QPainter, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QAbstractItemView, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
-    QPlainTextEdit, QPushButton, QSplitter, QTableWidget, QTableWidgetItem, QToolButton, QTreeWidget,
-    QTreeWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
+    QListWidgetItem, QMenu, QPlainTextEdit, QPushButton, QSplitter, QStackedWidget, QStyle, QTableWidget,
+    QTableWidgetItem, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
 from .apply_fields_dialog import KIND_ONE, KIND_PLURAL, ApplyFieldsDialog
-from .model import BUILTIN_STATUSES, RENAMABLE_FIELDS, StrandInfo
-from .view import strand_mime
+from .model import BUILTIN_STATUSES, BULK_LIST_FIELDS, RENAMABLE_FIELDS, StrandInfo
+from .strand_group_dialog import StrandGroupDialog, strands_text
+from . import theme
+from .view import strand_group_mime, strand_mime
 
 REFRESH_DELAY_MS = 300   # re-list this long after the board settles
 COMMIT_DELAY_MS = 700    # a description is saved this long after you stop typing
@@ -38,6 +45,8 @@ KIND_SINGULAR = {"tags": "tag", "characters": "character", "locations": "locatio
 DETAILS_MARK = " ✎"      # after a strand's name in the list when it has details
 ROLE_KIND = Qt.ItemDataRole.UserRole
 ROLE_NAME = Qt.ItemDataRole.UserRole + 1
+ROLE_GROUP = Qt.ItemDataRole.UserRole + 2   # a group row's name; a member row's group
+ROLE_FOLD = Qt.ItemDataRole.UserRole + 3    # what folding the row is remembered as
 BUILTIN_KEYS = {s.casefold() for s in BUILTIN_STATUSES}
 
 
@@ -69,14 +78,24 @@ class StrandTree(QTreeWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        self.scene_ref = None  # the board (set by the panel): a strand group's strands
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
 
     def drag_payload(self):
-        """Drag data for the current strand, or None (a heading, or nothing picked)."""
+        """Drag data for the current strand or strand group, or None (a heading, nothing
+        picked, or a group of statuses: a card has only one status)."""
         item = self.currentItem()
-        name = item.data(0, ROLE_NAME) if item is not None else None
-        return strand_mime(item.data(0, ROLE_KIND), name) if name is not None else None
+        if item is None:
+            return None
+        kind, name, group = item.data(0, ROLE_KIND), item.data(0, ROLE_NAME), item.data(0, ROLE_GROUP)
+        if name is not None:
+            return strand_mime(kind, name)
+        if group is not None and kind in BULK_LIST_FIELDS and self.scene_ref is not None:
+            found = self.scene_ref.strand_group(kind, group)
+            if found is not None and found.members:
+                return strand_group_mime(kind, found.name, found.members)
+        return None
 
     def startDrag(self, _actions) -> None:
         mime = self.drag_payload()
@@ -117,6 +136,7 @@ class StrandsPanel(QWidget):
         super().__init__(parent)
         self.scene = scene
         self._selected: tuple[str, str] | None = None   # (kind, casefolded name)
+        self._selected_group: tuple[str, str] | None = None  # likewise, when a group is picked
         self._collapsed: set[str] = set()
         self._folded: set[str] = set()   # detail sections folded away: "fields", "picture"
         self._shown: tuple | None = None
@@ -127,15 +147,21 @@ class StrandsPanel(QWidget):
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._apply_search)
         self.tree = StrandTree()
+        self.tree.scene_ref = scene
         self.tree.setToolTip("Drag a strand onto a card to add it to the card, or onto a "
-                             "group or a blank spot for a strand card")
+                             "group or a blank spot for a strand card. Drag a strand group "
+                             "onto a card to add all its strands")
         self.tree.setColumnCount(2)
         self.tree.setHeaderHidden(True)
         self.tree.setIndentation(14)
         self.tree.setRootIsDecorated(True)
+        # Several strands can be picked, to start a group with or add to one together.
+        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tree.currentItemChanged.connect(self._on_current)
-        self.tree.itemCollapsed.connect(lambda it: self._collapsed.add(it.data(0, ROLE_KIND)))
-        self.tree.itemExpanded.connect(lambda it: self._collapsed.discard(it.data(0, ROLE_KIND)))
+        self.tree.itemCollapsed.connect(lambda it: self._collapsed.add(it.data(0, ROLE_FOLD)))
+        self.tree.itemExpanded.connect(lambda it: self._collapsed.discard(it.data(0, ROLE_FOLD)))
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._context_menu)
         top = QWidget()
         tv = QVBoxLayout(top)
         tv.setContentsMargins(0, 0, 0, 0)
@@ -146,12 +172,23 @@ class StrandsPanel(QWidget):
         self.remove_unused_btn.setToolTip("Pick strands that nothing on the board uses and take "
                                           "them off it (as Edit → Remove Unused Strands…)")
         self.remove_unused_btn.clicked.connect(self._remove_unused)
+        self.new_group_btn = QPushButton("New strand group…")
+        self.new_group_btn.setAutoDefault(False)
+        self.new_group_btn.setToolTip("Make a strand group (e.g. a family of characters) to "
+                                      "filter by or add to cards together. Picked strands "
+                                      "start in it.")
+        self.new_group_btn.clicked.connect(lambda: self.new_group())
         unused_row = QHBoxLayout()
+        unused_row.addWidget(self.new_group_btn)
         unused_row.addStretch()
         unused_row.addWidget(self.remove_unused_btn)
         tv.addLayout(unused_row)
 
-        self.details = self._build_details()
+        self.strand_details = self._build_details()
+        self.group_details = self._build_group_details()
+        self.details = QStackedWidget()
+        self.details.addWidget(self.strand_details)
+        self.details.addWidget(self.group_details)
         self.splitter = QSplitter(Qt.Orientation.Vertical)
         self.splitter.addWidget(top)
         self.splitter.addWidget(self.details)
@@ -189,6 +226,9 @@ class StrandsPanel(QWidget):
         self.title.setWordWrap(True)
         self.usage = QLabel()
         self.usage.setEnabled(False)
+        self.groups_label = QLabel()   # "In Family, Council"
+        self.groups_label.setWordWrap(True)
+        self.groups_label.setEnabled(False)
 
         self.rename_btn = QPushButton("Rename…")
         self.rename_btn.setToolTip("Rename (or merge) it on every card and route")
@@ -259,6 +299,7 @@ class StrandsPanel(QWidget):
         v.addWidget(self.empty)
         v.addWidget(self.title)
         v.addWidget(self.usage)
+        v.addWidget(self.groups_label)
         v.addLayout(actions)
         v.addWidget(self.description, 1)
         v.addWidget(self.fields_toggle)
@@ -280,6 +321,60 @@ class StrandsPanel(QWidget):
         button.setFont(font)
         button.clicked.connect(lambda: self._toggle_section(key))
         return button
+
+    def _build_group_details(self) -> QWidget:
+        """A strand group: its name, how much its strands are used, actions, a description
+        and the member checklist (every strand of its kind; ticking one puts it in)."""
+        box = QWidget()
+        v = QVBoxLayout(box)
+        v.setContentsMargins(0, 6, 0, 0)
+        v.setSpacing(6)
+        self.group_title = QLabel()
+        self.group_title.setFont(self.title.font())
+        self.group_title.setWordWrap(True)
+        self.group_usage = QLabel()
+        self.group_usage.setEnabled(False)
+        self.group_rename_btn = QPushButton("Rename…")
+        self.group_rename_btn.setToolTip("Rename the strand group (its strands keep their names)")
+        self.group_rename_btn.clicked.connect(self._rename_group)
+        self.group_select_btn = QPushButton("Select cards")
+        self.group_select_btn.setToolTip("Select the cards that have any of its strands")
+        self.group_select_btn.clicked.connect(self._select_group_cards)
+        self.group_delete_btn = QPushButton("Delete strand group")
+        self.group_delete_btn.setToolTip("Forget the strand group. Its strands stay on the board and "
+                                         "on their cards (undo with Ctrl+Z)")
+        self.group_delete_btn.clicked.connect(self._delete_group)
+        actions = QHBoxLayout()
+        for b in (self.group_rename_btn, self.group_select_btn, self.group_delete_btn):
+            b.setAutoDefault(False)
+            actions.addWidget(b)
+        actions.addStretch()
+        self.group_description = QPlainTextEdit()
+        self.group_description.setPlaceholderText("Description…")
+        self.group_description.setMaximumHeight(90)
+        self.group_description.textChanged.connect(self._on_typed)
+        self.group_description.installEventFilter(self)
+        self.members_heading = QLabel()
+        bold = QFont()
+        bold.setBold(True)
+        self.members_heading.setFont(bold)
+        self.members_search = QLineEdit()
+        self.members_search.setPlaceholderText("Find a strand")
+        self.members_search.setClearButtonEnabled(True)
+        self.members_search.textChanged.connect(self._filter_members)
+        self.members = QListWidget()
+        self.members.setStyleSheet(theme.checkbox_stylesheet())
+        self.members.setToolTip("Tick a strand to put it in the strand group")
+        self.members.itemChanged.connect(self._on_member_ticked)
+        self._members_shown: tuple | None = None
+        v.addWidget(self.group_title)
+        v.addWidget(self.group_usage)
+        v.addLayout(actions)
+        v.addWidget(self.group_description)
+        v.addWidget(self.members_heading)
+        v.addWidget(self.members_search)
+        v.addWidget(self.members, 1)
+        return box
 
     def _build_fields(self) -> QWidget:
         """The custom fields: a Field | Value table edited in place (each edit is one
@@ -356,6 +451,21 @@ class StrandsPanel(QWidget):
         name = next((n for n in self.scene.all_values(kind) if n.casefold() == key), None)
         return (kind, name) if name is not None else None
 
+    def selected_group(self):
+        """The strand group shown in the detail pane, or None."""
+        if self._selected_group is None:
+            return None
+        return self.scene.strand_group(*self._selected_group)
+
+    def select_group(self, kind: str, name: str) -> bool:
+        """Show this strand group (if the board has it)."""
+        key = (kind, name.strip().casefold())
+        for item in self._group_items():
+            if (item.data(0, ROLE_KIND), item.data(0, ROLE_GROUP).casefold()) == key:
+                self.tree.setCurrentItem(item)
+                return True
+        return False
+
     def select(self, kind: str, name: str) -> bool:
         """Show this strand (if the board has it)."""
         key = (kind, name.strip().casefold())
@@ -375,7 +485,8 @@ class StrandsPanel(QWidget):
             rows.append((kind, tuple((name, (*usage.get(name.casefold(), (0, 0)),
                                              on_cards.get(name.casefold(), 0)),
                                       self.scene.strand(kind, name) is not None)
-                                     for name in self.scene.all_values(kind))))
+                                     for name in self.scene.all_values(kind)),
+                         tuple((g.name, g.members) for g in self.scene.groups_of(kind))))
         shown = tuple(rows)
         if shown != self._shown:
             self._shown = shown
@@ -385,11 +496,24 @@ class StrandsPanel(QWidget):
         self._show_selected()
 
     # ----- the list ----------------------------------------------------------------------------
-    def _strand_items(self):
+    def _rows(self):
+        """Every row under the headings: group rows, their members, ungrouped strands."""
         for i in range(self.tree.topLevelItemCount()):
             top = self.tree.topLevelItem(i)
             for j in range(top.childCount()):
-                yield top.child(j)
+                child = top.child(j)
+                yield child
+                for k in range(child.childCount()):
+                    yield child.child(k)
+
+    def _strand_items(self):
+        """Strand rows (a strand in two groups has two), and placeholder rows."""
+        return (item for item in self._rows() if item.data(0, ROLE_GROUP) is None
+                or item.data(0, ROLE_NAME) is not None)
+
+    def _group_items(self):
+        return (item for item in self._rows()
+                if item.data(0, ROLE_GROUP) is not None and item.data(0, ROLE_NAME) is None)
 
     def _fill(self, rows) -> None:
         scroll = self.tree.verticalScrollBar().value()
@@ -400,24 +524,46 @@ class StrandsPanel(QWidget):
         italic = QFont()
         italic.setItalic(True)
         current = None
-        for kind, strands in rows:
+        folder = self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon)
+        for kind, strands, groups in rows:
             top = QTreeWidgetItem(self.tree, [f"{KIND_LABELS[kind]}   ({len(strands)})", ""])
             top.setFont(0, bold)
             top.setData(0, ROLE_KIND, kind)
+            top.setData(0, ROLE_FOLD, kind)
             top.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            for name, (cards, routes, strand_cards), has_details in strands:
-                item = QTreeWidgetItem(top, [name + (DETAILS_MARK if has_details else ""),
-                                             usage_text(cards, routes, strand_cards,
-                                                        is_builtin(kind, name))])
-                item.setData(0, ROLE_KIND, kind)
-                item.setData(0, ROLE_NAME, name)
-                item.setTextAlignment(1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                if not (cards or routes or strand_cards):
-                    item.setFont(0, italic)
-                    item.setFont(1, italic)
-                if has_details:
-                    item.setToolTip(0, "Has a description, fields or a picture")
-                if self._selected == (kind, name.casefold()):
+            by_key = {row[0].casefold(): row for row in strands}
+            grouped: set[str] = set()
+            for gname, members in groups:
+                fold = f"{kind}/{gname.casefold()}"
+                # Spanning both columns (the count follows the name, as on the headings),
+                # so a long usage column never cuts the group's name short.
+                gitem = QTreeWidgetItem(top, [f"{gname}   ({len(members)})"])
+                gitem.setFirstColumnSpanned(True)
+                gitem.setIcon(0, folder)
+                gitem.setData(0, ROLE_KIND, kind)
+                gitem.setData(0, ROLE_GROUP, gname)
+                gitem.setData(0, ROLE_FOLD, fold)
+                gitem.setToolTip(0, f"Strand group: {strands_text(len(members), kind)}")
+                if self._selected_group == (kind, gname.casefold()):
+                    current = gitem
+                for m in members:
+                    row = by_key.get(m.casefold())
+                    if row is not None:
+                        grouped.add(m.casefold())
+                        item = self._strand_row(gitem, kind, row, gname)
+                        if current is None and self._selected == (kind, m.casefold()):
+                            current = item
+                if not members:
+                    none = QTreeWidgetItem(gitem, ["Empty: tick strands in its member list below", ""])
+                    none.setFirstColumnSpanned(True)
+                    none.setFlags(Qt.ItemFlag.NoItemFlags)
+                    none.setFont(0, italic)
+                gitem.setExpanded(fold not in self._collapsed)
+            for row in strands:
+                if row[0].casefold() in grouped:
+                    continue
+                item = self._strand_row(top, kind, row)
+                if self._selected == (kind, row[0].casefold()):
                     current = item
             if not strands:
                 none = QTreeWidgetItem(top, [f"No {KIND_LABELS[kind].lower()} yet", ""])
@@ -427,22 +573,59 @@ class StrandsPanel(QWidget):
         self.tree.resizeColumnToContents(1)
         if current is not None:
             self.tree.setCurrentItem(current)
+            current.setSelected(True)
         self.tree.blockSignals(False)
         self._apply_search(self.search.text())
         self.tree.verticalScrollBar().setValue(scroll)
 
+    @staticmethod
+    def _strand_row(parent, kind: str, row, group: str | None = None) -> QTreeWidgetItem:
+        """A strand's row (under its heading, or under `group`): its name, ✎ if it has
+        details, and its usage; italic when nothing uses it."""
+        name, (cards, routes, strand_cards), has_details = row
+        item = QTreeWidgetItem(parent, [name + (DETAILS_MARK if has_details else ""),
+                                        usage_text(cards, routes, strand_cards, is_builtin(kind, name))])
+        item.setData(0, ROLE_KIND, kind)
+        item.setData(0, ROLE_NAME, name)
+        item.setData(0, ROLE_GROUP, group)
+        item.setTextAlignment(1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        if not (cards or routes or strand_cards):
+            italic = QFont()
+            italic.setItalic(True)
+            item.setFont(0, italic)
+            item.setFont(1, italic)
+        if has_details:
+            item.setToolTip(0, "Has a description, fields or a picture")
+        return item
+
     def _apply_search(self, text: str) -> None:
+        """Show strands whose name has the text, and groups whose name has it (with all
+        their strands) or that hold a strand that does."""
         needle = text.strip().casefold()
         for item in self._strand_items():
             name = item.data(0, ROLE_NAME)
             item.setHidden(bool(needle) and (name is None or needle not in name.casefold()))
+        for group in self._group_items():
+            if needle and needle in group.data(0, ROLE_GROUP).casefold():
+                for k in range(group.childCount()):
+                    group.child(k).setHidden(False)
+            children = [group.child(k) for k in range(group.childCount())]
+            group.setHidden(bool(needle) and all(c.isHidden() for c in children))
 
     def _on_current(self, item, _previous=None) -> None:
-        self.commit_description()  # anything typed for the strand being left
+        self.commit_description()  # anything typed for the strand or group being left
         self._finish_field_edit()
-        if item is None or item.data(0, ROLE_NAME) is None:
+        if item is None:
             return
-        self._selected = (item.data(0, ROLE_KIND), item.data(0, ROLE_NAME).casefold())
+        name, group = item.data(0, ROLE_NAME), item.data(0, ROLE_GROUP)
+        if name is not None:
+            self._selected = (item.data(0, ROLE_KIND), name.casefold())
+            self._selected_group = None
+        elif group is not None and item.flags() & Qt.ItemFlag.ItemIsSelectable:
+            self._selected_group = (item.data(0, ROLE_KIND), group.casefold())
+            self._selected = None
+        else:
+            return
         self._show_selected(force=True)
 
     def _on_renamed(self, field: str, old: str, new: str) -> None:
@@ -451,6 +634,12 @@ class StrandsPanel(QWidget):
 
     # ----- showing the selected strand -------------------------------------------------------------
     def _show_selected(self, force: bool = False) -> None:
+        group = self.selected_group()
+        self.details.setCurrentWidget(self.group_details if group is not None else self.strand_details)
+        if group is not None:
+            self._show_group(group, force)
+            return
+        self._selected_group = None  # (gone, e.g. undone)
         sel = self.selected()
         has = sel is not None
         self.empty.setVisible(not has)
@@ -458,6 +647,7 @@ class StrandsPanel(QWidget):
             w.setVisible(has)
         for b in self._buttons:
             b.setVisible(has)
+        self.groups_label.setVisible(False)  # (shown below when it has any)
         if not has:
             self._show_sections()
             return
@@ -470,6 +660,10 @@ class StrandsPanel(QWidget):
         self.usage.setText(f"{KIND_SINGULAR[kind].capitalize()} · "
                            f"{usage_text(cards, routes, strand_cards, builtin)}"
                            + ("" if cards or routes or strand_cards or builtin else " (kept on the board)"))
+        in_groups = [g.name for g in self.scene.groups_with(kind, name)]
+        self.groups_label.setText(("In strand group " if len(in_groups) == 1 else "In strand groups ")
+                                  + ", ".join(in_groups) if in_groups else "")
+        self.groups_label.setVisible(bool(in_groups))
         self.select_btn.setEnabled(cards > 0)
         # An unused built-in status has nothing to rename (its name is always there).
         self.rename_btn.setEnabled(not builtin or bool(cards or routes or strand_cards))
@@ -486,6 +680,68 @@ class StrandsPanel(QWidget):
         self._show_fields(info.fields if info else (), force)
         self._show_picture(info.picture if info else "")
         self.clear_btn.setEnabled(info is not None)
+
+    def _show_group(self, group, force: bool = False) -> None:
+        kind = group.kind
+        cards = self._cards_with_any(kind, group.members)
+        self.group_title.setText(group.name)
+        self.group_usage.setText(f"{KIND_SINGULAR[kind].capitalize()} strand group · "
+                                 f"{strands_text(len(group.members), kind)} · "
+                                 + (f"{len(cards)} card" + ("" if len(cards) == 1 else "s")
+                                    if cards else "on no cards"))
+        self.group_select_btn.setEnabled(bool(cards))
+        if force or (not self._commit_timer.isActive()
+                     and self.group_description.toPlainText() != group.description):
+            self.group_description.blockSignals(True)
+            self.group_description.setPlainText(group.description)
+            self.group_description.blockSignals(False)
+        self.members_heading.setText(f"Members ({len(group.members)})")
+        strands = tuple(self.scene.all_values(kind))
+        shown = (group.key, strands, tuple(m.casefold() for m in group.members))
+        if force or shown != self._members_shown:
+            self._members_shown = shown
+            keys = {m.casefold() for m in group.members}
+            scroll = self.members.verticalScrollBar().value()
+            self.members.blockSignals(True)
+            self.members.clear()
+            for name in strands:
+                item = QListWidgetItem(name)
+                item.setData(ROLE_NAME, name)
+                item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(Qt.CheckState.Checked if name.casefold() in keys
+                                   else Qt.CheckState.Unchecked)
+                self.members.addItem(item)
+            self.members.blockSignals(False)
+            self._filter_members(self.members_search.text())
+            self.members.verticalScrollBar().setValue(scroll)
+
+    def _filter_members(self, text: str) -> None:
+        needle = text.strip().casefold()
+        for i in range(self.members.count()):
+            item = self.members.item(i)
+            item.setHidden(bool(needle) and needle not in item.text().casefold())
+
+    def _on_member_ticked(self, item: QListWidgetItem) -> None:
+        """A tick puts the strand in the group, an untick takes it out (one undo step)."""
+        group = self.selected_group()
+        if group is None:
+            return
+        self.commit_description()
+        name = item.data(ROLE_NAME)
+        if item.checkState() == Qt.CheckState.Checked:
+            self.scene.add_to_strand_group(group.kind, group.name, [name])
+        else:
+            self.scene.remove_from_strand_group(group.kind, group.name, [name])
+
+    def _cards_with_any(self, kind: str, names) -> list:
+        keys = {n.casefold() for n in names}
+        out = []
+        for item in self.scene.cards.values():
+            raw = getattr(item.card, kind)
+            values = raw if isinstance(raw, list) else [raw]
+            if any(v.strip().casefold() in keys for v in values):
+                out.append(item)
+        return out
 
     def _toggle_section(self, key: str) -> None:
         self._folded ^= {key}
@@ -610,13 +866,20 @@ class StrandsPanel(QWidget):
         self._commit_timer.start()
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
-        if obj is self.description and event.type() == QEvent.Type.FocusOut:
+        # (getattr: events arrive while the panel is still being built)
+        if event.type() == QEvent.Type.FocusOut and obj in (self.description,
+                                                            getattr(self, "group_description", None)):
             self.commit_description()
         return False
 
     def commit_description(self) -> bool:
-        """Save what's typed in the description (one undo step)."""
+        """Save what's typed in the strand's or group's description (one undo step)."""
         self._commit_timer.stop()
+        group = self.selected_group()
+        if group is not None:
+            text = self.group_description.toPlainText()
+            return text != group.description and self.scene.update_strand_group(
+                group.kind, group.name, description=text)
         sel = self.selected()
         if sel is None:
             return False
@@ -818,6 +1081,104 @@ class StrandsPanel(QWidget):
         sel = self.selected()
         if sel is not None:
             self.scene.show_thread(sel[1])
+
+    # ----- strand groups ----------------------------------------------------------------------------
+    def _picked_strands(self) -> dict[str, list[str]]:
+        """The strands picked in the list, by kind, each once, in list order."""
+        out: dict[str, list[str]] = {}
+        for item in self.tree.selectedItems():
+            name = item.data(0, ROLE_NAME)
+            if name is not None:
+                names = out.setdefault(item.data(0, ROLE_KIND), [])
+                if name.casefold() not in {n.casefold() for n in names}:
+                    names.append(name)
+        return out
+
+    def _current_kind(self) -> str:
+        item = self.tree.currentItem()
+        kind = item.data(0, ROLE_KIND) if item is not None else None
+        return kind or "characters"
+
+    def _group_taken(self, kind: str, name: str) -> bool:
+        return self.scene.strand_group(kind, name) is not None
+
+    def new_group(self, kind: str | None = None, picked: dict[str, list[str]] | None = None):
+        """Ask for a name and make a group, starting with the picked strands of its kind.
+        Returns the group, or None if cancelled."""
+        self.commit_description()
+        dialog = StrandGroupDialog(kind or self._current_kind(), self._group_taken,
+                                   picked=self._picked_strands() if picked is None else picked,
+                                   parent=self)
+        if not dialog.exec():
+            return None
+        group = self.scene.create_strand_group(dialog.kind(), dialog.name(), dialog.members())
+        if group is not None:
+            self.refresh()
+            self.select_group(group.kind, group.name)
+        return group
+
+    def _rename_group(self) -> None:
+        group = self.selected_group()
+        if group is None:
+            return
+        self.commit_description()
+        dialog = StrandGroupDialog(group.kind, self._group_taken, name=group.name, parent=self)
+        if dialog.exec() and self.scene.update_strand_group(group.kind, group.name, new_name=dialog.name()):
+            self._selected_group = (group.kind, dialog.name().casefold())
+            self.refresh()
+
+    def _delete_group(self) -> None:
+        group = self.selected_group()
+        if group is not None:
+            self._commit_timer.stop()
+            self.scene.delete_strand_group(group.kind, group.name)
+            self.scene.notice.emit(f"Deleted the strand group “{group.name}”: its strands stay on the board")
+            self._selected_group = None
+            self.refresh()
+
+    def _select_group_cards(self) -> None:
+        group = self.selected_group()
+        if group is not None:
+            self.show_cards.emit(self._cards_with_any(group.kind, group.members))
+
+    def _context_menu(self, pos: QPoint) -> None:
+        item = self.tree.itemAt(pos)
+        if item is None:
+            return
+        menu = self._menu_for(item)
+        if menu is not None and not menu.isEmpty():
+            menu.exec(self.tree.viewport().mapToGlobal(pos))
+
+    def _menu_for(self, item) -> QMenu | None:
+        """The right-click menu for a row: a strand (Add to Group ▸, Remove from its
+        group), a group (Rename, Delete) or a heading (New Group)."""
+        kind, name, group = item.data(0, ROLE_KIND), item.data(0, ROLE_NAME), item.data(0, ROLE_GROUP)
+        if kind is None:
+            return None
+        menu = QMenu(self)
+        if name is not None:
+            if not item.isSelected():  # right-clicking a strand outside the picked ones
+                self.tree.setCurrentItem(item)
+            names = self._picked_strands().get(kind) or [name]
+            what = names[0] if len(names) == 1 else strands_text(len(names), kind)
+            add = menu.addMenu(f"Add {what} to Strand Group")
+            for g in self.scene.groups_of(kind):
+                act = add.addAction(g.name, lambda g=g: self.scene.add_to_strand_group(kind, g.name, names))
+                act.setEnabled(not all(g.has(n) for n in names))
+            if self.scene.groups_of(kind):
+                add.addSeparator()
+            add.addAction("New Strand Group…", lambda: self.new_group(kind, {kind: names}))
+            if group is not None:
+                menu.addAction(f"Remove from “{group}”",
+                               lambda: self.scene.remove_from_strand_group(kind, group, names))
+        elif group is not None and item.flags() & Qt.ItemFlag.ItemIsSelectable:
+            self.tree.setCurrentItem(item)
+            menu.addAction("Rename Strand Group…", self._rename_group)
+            menu.addAction("Delete Strand Group", self._delete_group)
+        elif item.parent() is None:  # a heading
+            menu.addAction(f"New {KIND_SINGULAR[kind].capitalize()} Strand Group…",
+                           lambda: self.new_group(kind, {}))
+        return menu
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

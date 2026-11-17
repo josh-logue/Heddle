@@ -1,6 +1,6 @@
 {
   "app": "Heddle",
-  "version": 12,
+  "version": 13,
   "custom_colors": [],
   "saved_values": {
     "tags": [
@@ -2301,5 +2301,6 @@
       "picture": "",
       "fields": []
     }
-  ]
+  ],
+  "strand_groups": []
 }

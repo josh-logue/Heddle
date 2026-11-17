@@ -150,7 +150,8 @@ export function CardEditor({ store, id, isNew, onClose }: CardEditorProps) {
             <input id="card-title" type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <TokenInput label="Tags" values={details.tags} onChange={details.setTags} suggestions={suggest("tags")} noun="tag"
-                      placeholder="Type a tag (e.g. Act 1, Subplot B) and press Enter" onPending={(t) => details.setPending("tags", t)} />
+                      placeholder="Type a tag (e.g. Act 1, Subplot B) and press Enter" onPending={(t) => details.setPending("tags", t)}
+                      groups={store.strandGroupChoices().tags} />
         </>
       )}
       <div className="field">

@@ -28,6 +28,12 @@ export const STRAND_MIME = "application/x-heddle-strand";
 /** The strand being dragged from this page's Strands panel, if any. Safari (WebKit) doesn't
  *  show a drag's own data types to the drop target, so the board looks here too. */
 export const strandDragging: { current: { kind: StrandKind; name: string } | null } = { current: null };
+/** A strand group dragged from the Strands panel: its kind, name and strands (so it needs no
+ *  lookup on the board it lands on). */
+export const STRAND_GROUP_MIME = "application/x-heddle-strand-group";
+export type StrandGroupDrag = { kind: StrandKind; name: string; members: string[] };
+/** The strand group being dragged from this page's Strands panel, if any (as strandDragging). */
+export const strandGroupDragging: { current: StrandGroupDrag | null } = { current: null };
 const CLICK_SLOP = 4; // px a press may move and still count as a click
 const TOOLTIP_DELAY_MS = 600;
 const NEW_CARD_MIN_DRAG = 40; // a handle dropped this far out on empty canvas makes a card
@@ -82,7 +88,7 @@ export class BoardCanvas {
   private linking: { source: string; end: [number, number] } | null = null;
   private suppressMenu = false;
   /** A strand being dragged in from the Strands panel: where it would land. */
-  private strandDrag: { x: number; y: number } | null = null;
+  private strandDrag: { x: number; y: number; group?: StrandKind } | null = null;
   private lastPointer: [number, number] | null = null;
   private tooltipTimer = 0;
   private nudgeTimer = 0;
@@ -106,14 +112,23 @@ export class BoardCanvas {
     this.on(canvas, "dblclick", (e) => this.doubleClick(e as MouseEvent));
     // A strand dragged from the Strands panel (its kind and name come with the drop).
     const strandDrag = (e: DragEvent) => strandDragging.current !== null || Array.from(e.dataTransfer?.types ?? []).includes(STRAND_MIME);
+    const groupDrag = (e: DragEvent) => strandGroupDragging.current !== null
+      || Array.from(e.dataTransfer?.types ?? []).includes(STRAND_GROUP_MIME);
+    // (A drop can read the data; a drag over it only sees the types, so its kind comes from
+    // this page's drag. One from another page is let through and judged on the drop.)
+    const groupKind = () => strandGroupDragging.current?.kind;
     this.on(canvas, "dragover", (e) => {
       const d = e as DragEvent;
-      if (!strandDrag(d) || !this.store) return;
+      if (!this.store) return;
+      const group = groupDrag(d);
+      if (!group && !strandDrag(d)) return;
       const [x, y] = this.camera.toScene(...this.local(d));
-      const ok = this.store.strandDropTarget(x, y) !== null;
+      const kind = group ? groupKind() : undefined;
+      const ok = group ? this.store.strandGroupDropTarget(kind ?? "tags", x, y) !== null
+        : this.store.strandDropTarget(x, y) !== null;
       if (ok) d.preventDefault();
       d.dataTransfer!.dropEffect = ok ? "copy" : "none";
-      this.strandDrag = { x, y };
+      this.strandDrag = group ? { x, y, group: kind ?? "tags" } : { x, y };
       this.redraw();
     });
     this.on(canvas, "dragleave", () => {
@@ -123,6 +138,22 @@ export class BoardCanvas {
     this.on(canvas, "drop", (e) => {
       const d = e as DragEvent;
       this.strandDrag = null;
+      if (groupDrag(d) && this.store) {
+        d.preventDefault();
+        try {
+          const raw = d.dataTransfer?.getData(STRAND_GROUP_MIME);
+          const g = raw ? JSON.parse(raw) as StrandGroupDrag : strandGroupDragging.current!;
+          strandGroupDragging.current = null;
+          const [x, y] = this.camera.toScene(...this.local(d));
+          const [, notice] = this.store.dropStrandGroup(g.kind, g.name, Array.isArray(g.members) ? g.members : [], x, y);
+          if (notice) this.host.notice(notice);
+          this.canvas.focus({ preventScroll: true });
+        } catch {
+          // (not a strand group after all: nothing to drop)
+        }
+        this.redraw();
+        return;
+      }
       if (!strandDrag(d) || !this.store) return;
       d.preventDefault();
       try {
@@ -284,7 +315,10 @@ export class BoardCanvas {
       : this.linking ? { ...this.linking, click: true } : null;
     let dropTarget: string | undefined = g?.kind === "move" && g.moved ? g.hint ?? undefined : undefined;
     let ghost: { rect: Rect; color: string } | undefined;
-    if (this.strandDrag) {
+    if (this.strandDrag?.group) { // a strand group: only a standard card takes it, no preview
+      const { x, y, group } = this.strandDrag;
+      dropTarget = this.store.strandGroupDropTarget(group, x, y) ?? undefined;
+    } else if (this.strandDrag) {
       const { x, y } = this.strandDrag;
       const target = this.store.strandDropTarget(x, y);
       if (target) dropTarget = target[1] ?? undefined;

@@ -15,7 +15,7 @@ export const APP_ID = "Heddle";
 /** Kept as an alias: W0 named it APP_NAME. */
 export const APP_NAME = APP_ID;
 // The version history lives in heddle/model.py's comments.
-export const FORMAT_VERSION = 12;
+export const FORMAT_VERSION = 13;
 /** The largest row limit a group can have (steps per row when auto-arranging). */
 export const ARRANGE_WRAP_MAX = 99;
 
@@ -588,6 +588,59 @@ export function cleanStrands(raw: unknown): StrandInfo[] {
   return out;
 }
 
+// ----- strand groups ---------------------------------------------------------------------
+
+/** A named set of strands of one kind (see StrandGroup in heddle/model.py). Cards never
+ *  refer to a group: adding one to a card adds its members. */
+export interface StrandGroup {
+  kind: StrandKind | "";
+  name: string;
+  members: string[];
+  description: string;
+}
+
+export function makeStrandGroup(raw: Record<string, unknown> = {}): StrandGroup {
+  const kind = "kind" in raw ? raw.kind : "tags";
+  const members = raw.members;
+  return {
+    kind: (RENAMABLE_FIELDS as readonly unknown[]).includes(kind) ? (kind as StrandKind) : "",
+    name: oneLine(raw.name ?? ""),
+    // Only a real list: a comma-separated string isn't read as members (unlike old card fields).
+    members: Array.isArray(members) ? cleanList(members) : [],
+    description: asText(raw.description ?? ""),
+  };
+}
+
+export function strandGroupKey(g: StrandGroup): string {
+  return strandKey(g.kind, g.name);
+}
+
+export function groupHas(g: StrandGroup, strand: string): boolean {
+  const key = casefold(strip(strand));
+  return g.members.some((m) => casefold(m) === key);
+}
+
+export function strandGroupToDict(g: StrandGroup): Record<string, unknown> {
+  return { kind: g.kind, name: g.name, members: [...g.members], description: g.description };
+}
+
+/** Saved strand groups: well-formed, named, one per name within a kind (the first wins).
+ *  Empty groups are kept. */
+export function cleanStrandGroups(raw: unknown): StrandGroup[] {
+  const out: StrandGroup[] = [];
+  const seen = new Set<string>();
+  for (const entry of Array.isArray(raw) ? raw : []) {
+    if (!isRecord(entry)) continue;
+    const group = makeStrandGroup(entry);
+    const key = strandGroupKey(group);
+    if (group.kind && group.name && !seen.has(key)) {
+      seen.add(key);
+      out.push(group);
+    }
+  }
+  return out;
+}
+
 // ----- the board -----------------------------------------------------------------------
 
 export type SavedValues = Partial<Record<StrandKind, string[]>>;
@@ -600,6 +653,8 @@ export interface BoardData {
   display: Display;
   routes: RouteData[];
   strands: StrandInfo[];
+  /** Named sets of strands, in the order they were made. */
+  strand_groups: StrandGroup[];
   /** The format version the board was read from (not saved). */
   source_version: number;
   /** What loading had to repair, in words: shown once on opening, never saved. */
@@ -615,16 +670,19 @@ export function makeBoard(parts: Partial<BoardData> = {}): BoardData {
     display: parts.display ?? { ...DISPLAY_DEFAULTS },
     routes: parts.routes ?? [],
     strands: parts.strands ?? [],
+    strand_groups: parts.strand_groups ?? [],
     source_version: parts.source_version ?? FORMAT_VERSION,
     load_notes: parts.load_notes ?? [],
   };
 }
 
-/** Every value of a field on this board: used on cards, by routes, or saved. */
+/** Every value of a field on this board: used on cards, by routes, saved, with details or
+ *  in a strand group. */
 export function allValues(board: BoardData, field: StrandKind): string[] {
   const extra = [...(board.saved_values[field] ?? [])];
   for (const [spelling] of countValues(board.routes, field).values()) extra.push(spelling);
   for (const s of board.strands) if (s.kind === field) extra.push(s.name);
+  for (const g of board.strand_groups) if (g.kind === field) extra.push(...g.members);
   return boardValues(board.cards, field, extra);
 }
 
@@ -655,6 +713,7 @@ export function boardToDict(board: BoardData): Record<string, unknown> {
     connections: board.connections.map((c) => pick(c, CONNECTION_FIELDS)),
     routes: board.routes.filter((r) => r.key.length && !routeIsBlank(r)).map((r) => pick(r, ROUTE_FIELDS)),
     strands: board.strands.filter((s) => s.kind && s.name && !strandIsBlank(s)).map(strandToDict),
+    strand_groups: board.strand_groups.filter((g) => g.kind && g.name).map(strandGroupToDict),
   };
 }
 
@@ -698,6 +757,7 @@ export function boardFromDict(raw: unknown): BoardData {
     cards, connections: conns, custom_colors: dedupeColors(customs),
     saved_values: cleanSavedValues(raw.saved_values), display: cleanDisplay(raw.display),
     routes: cleanRoutes(raw.routes), strands: cleanStrands(raw.strands),
+    strand_groups: cleanStrandGroups(raw.strand_groups),
     source_version: version, load_notes: notes,
   });
 }

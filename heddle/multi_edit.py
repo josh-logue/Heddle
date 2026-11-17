@@ -12,7 +12,7 @@ from . import settings
 from .details_form import STATUS_PRESETS
 from .dialogs import SWATCH_COLUMNS, ColorSwatch
 from .model import BULK_LIST_FIELDS, CARD_COLORS
-from .token_input import TokenInput
+from .token_input import STRAND_GROUPS_KEY, TokenInput
 
 KEEP_STATUS = "(keep each card's status)"
 SINGULAR = {"tags": "tag", "characters": "character", "locations": "location"}
@@ -52,12 +52,14 @@ class MultiEditDialog(QDialog):
         swatch_box.setLayout(grid)
 
         suggestions, in_selection = suggestions or {}, in_selection or {}
+        # Strand groups: picking one adds (or removes) all its strands.
+        groups = suggestions.get(STRAND_GROUPS_KEY, {})
         self.adders: dict[str, TokenInput] = {}
         self.removers: dict[str, TokenInput] = {}
         for f in BULK_LIST_FIELDS:
-            self.adders[f] = TokenInput([], list(suggestions.get(f, [])), SINGULAR[f])
+            self.adders[f] = TokenInput([], list(suggestions.get(f, [])), SINGULAR[f], groups=groups.get(f))
             self.adders[f].edit.setPlaceholderText(f"{f.capitalize()} to add to every card")
-            self.removers[f] = TokenInput([], list(in_selection.get(f, [])), SINGULAR[f])
+            self.removers[f] = TokenInput([], list(in_selection.get(f, [])), SINGULAR[f], groups=groups.get(f))
             self.removers[f].edit.setPlaceholderText(f"{f.capitalize()} to remove from every card")
         self.add_tags, self.remove_tags = self.adders["tags"], self.removers["tags"]
         status_suggestions = suggestions.get("status", [])
