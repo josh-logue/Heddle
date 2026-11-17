@@ -531,8 +531,14 @@ export function App() {
     if (!store) return;
     store.setCollapsed(store.state.cards.filter((c) => c.kind === "group").map((c) => c.id), !store.anyCollapsed);
   }, [store]);
-  const undo = useCallback(() => store?.undo(), [store]);
-  const redo = useCallback(() => store?.redo(), [store]);
+  const undo = useCallback(() => {
+    canvas?.settle(); // (a nudge still settling is recorded first)
+    store?.undo();
+  }, [store, canvas]);
+  const redo = useCallback(() => {
+    canvas?.settle();
+    store?.redo();
+  }, [store, canvas]);
 
   // ----- panels ---------------------------------------------------------------------------
   const saveLayout = useCallback((next: PanelLayout) => {

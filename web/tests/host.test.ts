@@ -9,7 +9,8 @@ import { BoardStore } from "../src/board/store.ts";
 import { fakeMeasurer } from "../src/board/text.ts";
 import { laterDb } from "../src/platform/db.ts";
 import { clearErrors, errorEntries, errorReport, logError } from "../src/platform/errorLog.ts";
-import { FileGoneError, parseBoard } from "../src/platform/files.ts";
+import { FileGoneError, parseBoard, type FileRef } from "../src/platform/files.ts";
+import { browserFiles } from "../src/platform/browser/files.ts";
 import { BROWSER_KEYS, DESKTOP_KEYS, getHost, matchesKey, setHost, type Host } from "../src/platform/host.ts";
 import { orphanDrafts, recentFiles } from "../src/platform/safety.ts";
 import { getOption, readJson, readSetting, setOption, writeJson, writeSetting } from "../src/platform/settings.ts";
@@ -127,6 +128,30 @@ describe("the app on a non-browser host", () => {
       expect(draft!.handle).toEqual(pathRef("C:/Boards/Tracks.json"));
     });
 
+    it("Save checks for changes made elsewhere, and backs them up, even when reading needs asking first", async () => {
+      // A browser handle whose permission lapsed reads as nothing unless asked: Save must
+      // ask, not take "nothing" for "unchanged" and overwrite with no backup.
+      host.disk.set("C:/Boards/Tracks.json", BOARD);
+      const { store, s } = await open("C:/Boards/Tracks.json");
+      const elsewhere = '{"cards":[{"id":"a","title":"Greta"}]}';
+      host.disk.set("C:/Boards/Tracks.json", elsewhere);
+      host.unreadable.add("C:/Boards/Tracks.json");
+      store.updateCard("a", { title: "Mabel" });
+      const asked: string[] = [];
+      page.askConflict = async (name) => {
+        asked.push(name);
+        return "overwrite";
+      };
+      try {
+        expect(await s.save()).toBe(true);
+      } finally {
+        page.askConflict = async () => "cancel";
+      }
+      expect(asked).toEqual(["Tracks"]);
+      expect(host.disk.get("C:/Boards/Tracks.json")).toContain("Mabel");
+      expect((await s.backups()).map(([, b]) => b.text)).toContain(elsewhere);
+    });
+
     it("Open Recent says when a file has gone", async () => {
       await expect(app.files.reopen(pathRef("C:/Boards/Gone.json"))).rejects.toBeInstanceOf(FileGoneError);
     });
@@ -142,6 +167,34 @@ describe("the app on a non-browser host", () => {
       stop();
       expect(host.leaving).toBeNull();
     });
+  });
+});
+
+describe("browser file handles", () => {
+  /** A File System Access handle whose permission has lapsed ("prompt"). */
+  function lapsed(granted: boolean) {
+    const asked: string[] = [];
+    const h = {
+      name: "Tracks.json",
+      getFile: async () => ({ text: async () => BOARD }),
+      queryPermission: async () => "prompt",
+      requestPermission: async ({ mode }: { mode: string }) => {
+        asked.push(mode);
+        return granted ? "granted" : "denied";
+      },
+    };
+    return { h: h as unknown as FileRef, asked };
+  }
+
+  it("reads quietly as nothing, or asks once for read and write when told to (Save)", async () => {
+    const quiet = lapsed(true);
+    expect(await browserFiles.read(quiet.h)).toBeNull();
+    expect(quiet.asked).toEqual([]);
+    const save = lapsed(true);
+    expect(await browserFiles.read(save.h, true)).toBe(BOARD);
+    expect(save.asked).toEqual(["readwrite"]);
+    const refused = lapsed(false);
+    expect(await browserFiles.read(refused.h, true)).toBeNull();
   });
 });
 

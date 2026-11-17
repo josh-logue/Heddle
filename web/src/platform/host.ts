@@ -41,8 +41,10 @@ export interface HostFiles {
   /** Open Recent: read a file used before, asking for permission where needed (that
    *  needs the user's click). Null if not allowed; throws FileGoneError if it's gone. */
   reopen(ref: FileRef): Promise<string | null>;
-  /** A file's text as it is now, or null if it can't be read (gone, not allowed). Never asks. */
-  read(ref: FileRef): Promise<string | null>;
+  /** A file's text as it is now, or null if it can't be read (gone, not allowed). Asks
+   *  for permission only if `ask` (it needs the user's click): Save asks, before writing,
+   *  so a lapsed permission can't hide changes made elsewhere; autosave never does. */
+  read(ref: FileRef, ask?: boolean): Promise<string | null>;
   /** Write a board file in place. Without permission, `ask` asks (needs a click); else
    *  this throws NoPermissionError. */
   write(ref: FileRef, text: string, ask: boolean): Promise<void>;

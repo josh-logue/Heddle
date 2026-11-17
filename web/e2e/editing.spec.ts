@@ -149,6 +149,40 @@ test("nudges with the arrow keys: one undo step per burst", async ({ page }) => 
   expect((await board(page)).cards[0]!.x).toBe(x0);
 });
 
+test("undo straight after a nudge undoes the nudge, not the step before it", async ({ page }) => {
+  await newBoard(page);
+  await addCard(page, "A", 400, 300);
+  await addCard(page, "B", 800, 300); // the step before the nudge
+  const a = await onCard(page, "A");
+  await page.mouse.click(a.x, a.y);
+  const x0 = (await board(page)).cards[0]!.x;
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Control+z"); // before the burst settles
+  await page.waitForTimeout(700);
+  expect((await board(page)).cards.map((c) => [c.title, c.x - (c.title === "A" ? x0 : 0)]))
+    .toEqual([["A", 0], ["B", expect.any(Number)]]);
+  await page.keyboard.press("Control+y"); // and redo brings the nudge back
+  expect((await board(page)).cards[0]!.x).toBe(x0 + 10);
+});
+
+test("undo in the middle of a drag cancels the drag, and the drop changes nothing", async ({ page }) => {
+  await newBoard(page);
+  await addCard(page, "A", 400, 300);
+  await addCard(page, "B", 800, 300);
+  const a = await onCard(page, "A");
+  const x0 = (await board(page)).cards[0]!.x;
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(a.x + 60, a.y + 40, { steps: 4 });
+  await page.keyboard.press("Control+z"); // takes back adding B
+  await page.mouse.move(a.x + 120, a.y + 40, { steps: 2 });
+  await page.mouse.up();
+  const after = await board(page);
+  expect(after.cards.map((c) => [c.title, c.x])).toEqual([["A", x0]]);
+  await page.keyboard.press("Control+y"); // B comes back: the drop recorded nothing over it
+  expect((await board(page)).cards.map((c) => c.title)).toEqual(["A", "B"]);
+});
+
 test("connects two cards by dragging the handle, and edits the arrow", async ({ page }) => {
   await newBoard(page);
   await addCard(page, "A", 300, 250);

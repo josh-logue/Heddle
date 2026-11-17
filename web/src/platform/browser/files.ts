@@ -73,10 +73,11 @@ async function reopen(ref: FileRef): Promise<string | null> {
   }
 }
 
-/** A file's text as it is now, or null if it can't be read (gone, not allowed). */
-async function read(ref: FileRef): Promise<string | null> {
+/** A file's text as it is now, or null if it can't be read (gone, not allowed). `ask`
+ *  (Save, just before writing) asks for read and write together: one prompt, not two. */
+async function read(ref: FileRef, ask = false): Promise<string | null> {
   try {
-    if (!(await permitted(handle(ref), "read", false))) return null;
+    if (!(await permitted(handle(ref), ask ? "readwrite" : "read", ask))) return null;
     return await (await handle(ref).getFile()).text();
   } catch {
     return null;

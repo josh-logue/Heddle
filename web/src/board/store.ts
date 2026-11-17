@@ -84,10 +84,15 @@ export interface BoardState {
 }
 
 const sameList = <T>(a: readonly T[], b: readonly T[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+/** Equal lists: mostly the same objects (shared between snapshots), so only the replaced
+ *  ones are compared by value. */
+const equalList = <T>(a: readonly T[], b: readonly T[]) =>
+  a.length === b.length && a.every((x, i) => x === b[i] || deepEqual(x, b[i]));
 
-/** Equal boards: the same card and arrow objects, and equal everything else. */
+/** Equal boards, by value as the desktop compares its snapshots: a card dragged away and
+ *  back, or nudged there and back, is a new object but no change. */
 export function sameState(a: BoardState, b: BoardState): boolean {
-  return sameList(a.cards, b.cards) && sameList(a.connections, b.connections)
+  return equalList(a.cards, b.cards) && equalList(a.connections, b.connections)
     && deepEqual(a.custom_colors, b.custom_colors) && deepEqual(a.saved_values, b.saved_values)
     && deepEqual(a.display, b.display) && deepEqual(a.routes, b.routes) && deepEqual(a.strands, b.strands);
 }
@@ -429,6 +434,13 @@ export class BoardStore {
     }
     this.state = this.withDroppedStrands(this.state);
     const recorded = this.history.commit(this.state);
+    const current = this.history.current;
+    if (!recorded && current && current !== this.state) {
+      // Nothing changed after all (say a card dragged back where it was): keep the
+      // recorded objects, which later snapshots and the layout cache share.
+      this.state = current;
+      this.refresh();
+    }
     this.notify();
     return recorded;
   }

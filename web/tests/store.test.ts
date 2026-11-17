@@ -38,6 +38,34 @@ describe("undo and saving", () => {
     expect(s.history.canUndo()).toBe(false);
   });
 
+  it("doesn't record a drag that ends where it started (as the desktop compares by value)", () => {
+    const s = store({ cards: [{ id: "a", x: 0, y: 0 }, { id: "b", x: 400, y: 0 }] });
+    s.select(["a"]);
+    const roots = s.moveRoots();
+    s.beginMove(roots);
+    const base = s.movedBy(roots, 0, 0); // what the canvas does once a drag starts
+    s.preview(s.movedBy(roots, 50, 20, base));
+    s.preview(s.movedBy(roots, 0, 0, base));
+    s.endMove();
+    expect(s.commit()).toBe(false);
+    expect(s.history.canUndo()).toBe(false);
+    expect(s.modified).toBe(false);
+  });
+
+  it("doesn't record nudges that cancel out, and a board moved back to its saved state isn't modified", () => {
+    const s = store({ cards: [{ id: "a", x: 0, y: 0 }] });
+    s.select(["a"]);
+    s.nudgePreview(10, 0);
+    s.nudgePreview(-10, 0);
+    expect(s.commit()).toBe(false);
+    expect(s.modified).toBe(false);
+    s.nudge(10, 0);
+    expect(s.modified).toBe(true);
+    s.nudge(-10, 0); // two steps, but back where it was saved
+    expect(s.history.canUndo()).toBe(true);
+    expect(s.modified).toBe(false);
+  });
+
   it("keeps a group's saved corner with its cards", () => {
     const s = store({ cards: [{ id: "g", kind: "group", x: 999, y: 999 }, { id: "p", parent: "g", x: 100, y: 100 }] });
     expect([xOf(s, "g"), s.card("g")!.y]).toEqual([100 - 22, 100 - 22 - 32]);

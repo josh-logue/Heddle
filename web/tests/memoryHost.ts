@@ -24,6 +24,9 @@ export class MemoryHost implements Host {
   readonly saves: (string | null)[] = [];
   /** Paths this host may not write to without asking. */
   readonly readOnly = new Set<string>();
+  /** Paths this host may not even read without asking (a browser file handle whose
+   *  permission lapsed, as after recovering a draft). */
+  readonly unreadable = new Set<string>();
   readonly downloads: [string, string][] = [];
   readonly exports: [string, string | Blob][] = [];
   readonly pdfs: string[] = [];
@@ -54,7 +57,11 @@ export class MemoryHost implements Host {
       if (text === undefined) throw new FileGoneError(ref.name);
       return text;
     },
-    read: async (ref) => this.disk.get((ref as PathRef).path) ?? null,
+    read: async (ref, ask) => {
+      const path = (ref as PathRef).path;
+      if (this.unreadable.has(path) && !ask) return null;
+      return this.disk.get(path) ?? null;
+    },
     write: async (ref, text, ask) => {
       const path = (ref as PathRef).path;
       if (this.readOnly.has(path) && !ask) throw new NoPermissionError(`Not allowed to write ${ref.name}`);

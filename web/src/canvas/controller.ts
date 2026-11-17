@@ -851,6 +851,15 @@ export class BoardCanvas {
     this.nudgeTimer = window.setTimeout(() => this.flushNudges(), NUDGE_SETTLE_MS);
   }
 
+  /** Before undo or redo: a burst of nudges still settling is recorded first (so undo takes
+   *  back the nudge, not the step before it), and a drag or resize under way is cancelled
+   *  (its drop would otherwise land on the board undo just brought back). */
+  settle(): void {
+    const g = this.gesture;
+    if (g?.kind === "move" || g?.kind === "resize") this.cancelGesture();
+    this.flushNudges();
+  }
+
   private flushNudges(): void {
     if (!this.nudgeTimer) return;
     clearTimeout(this.nudgeTimer);

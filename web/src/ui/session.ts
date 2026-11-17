@@ -152,7 +152,9 @@ export class BoardSession {
   /** Write the board to its file, backing up what's there first. Refuses to silently
    *  overwrite changes made elsewhere: Save asks; autosave (`quiet`) asks once it's done. */
   private async writeInPlace(handle: FileRef, quiet: boolean, overwrite: boolean): Promise<boolean> {
-    const current = await this.files.read(handle);
+    // Save may ask to read the file (a lapsed permission would read as nothing: no check
+    // for changes made elsewhere, and no backup of them).
+    const current = await this.files.read(handle, !quiet);
     const changed = this.diskText !== null && current !== null && current !== this.diskText;
     if (changed && !overwrite) {
       if (quiet) {
