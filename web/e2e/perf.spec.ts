@@ -105,12 +105,23 @@ test("a 1,000-card board stays quick", async ({ page, browserName }) => {
 
 // The same board through the page itself: real mouse and wheel events, with the canvas, the
 // toolbar, the Card List and a search all keeping up (the store timings above leave React out).
-// Each step waits for the next frame, so the harness alone takes a frame or two per step:
-// the same steps on a one-card board give that floor, and what counts is the time above it.
+// What's timed is the page's own main-thread work per step (Chrome's TaskDuration), not the
+// wall clock: each step waits for the next frame, so wall-clock time comes in frames and
+// depends on the machine's frame pacing, which made a shared CI runner fail by a fraction of
+// a frame. The same steps on a one-card board give the floor; what counts is the work above
+// it, as a share of how long this machine takes over a fixed piece of the app's own code (so
+// a slower machine isn't held to a faster one's milliseconds).
 test("dragging and panning with panels open stay quick", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "Timed in Chromium only");
   test.setTimeout(120_000);
   await page.goto("/");
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Performance.enable");
+  /** Seconds the page's main thread has spent on tasks so far (scripts, style, layout, paint). */
+  const busy = async () => {
+    const { metrics } = await cdp.send("Performance.getMetrics");
+    return metrics.find((m) => m.name === "TaskDuration")!.value;
+  };
   const STEPS = 60;
   const settle = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))));
 
@@ -127,7 +138,8 @@ test("dragging and panning with panels open stay quick", async ({ page, browserN
     }, [text, cards] as const);
   }
 
-  /** Ms per step: dragging card `id` 60 steps, then 60 wheel pans. */
+  /** Ms per step, wall clock and main-thread work: dragging card `id` 60 steps, then 60
+   *  wheel pans. */
   async function measure(id: string) {
     const at = await page.evaluate((cardId) => {
       type Box = { x: number; y: number; w: number };
@@ -146,19 +158,22 @@ test("dragging and panning with panels open stay quick", async ({ page, browserN
     await page.mouse.down();
     await settle();
     let t0 = Date.now();
+    let b0 = await busy();
     for (let i = 1; i <= STEPS; i++) {
       await page.mouse.move(at.x + i * 4, at.y + i * 2);
       await settle();
     }
     const drag = (Date.now() - t0) / STEPS;
+    const dragWork = ((await busy()) - b0) * 1000 / STEPS;
     await page.mouse.up();
     await settle();
     t0 = Date.now();
+    b0 = await busy();
     for (let i = 0; i < STEPS; i++) {
       await page.mouse.wheel(0, 20);
       await settle();
     }
-    return { drag, pan: (Date.now() - t0) / STEPS };
+    return { drag, pan: (Date.now() - t0) / STEPS, dragWork, panWork: ((await busy()) - b0) * 1000 / STEPS };
   }
 
   const panels = async () => {
@@ -175,10 +190,30 @@ test("dragging and panning with panels open stay quick", async ({ page, browserN
   await expect(page.getByRole("tabpanel", { name: "Card List" })).toBeVisible(); // (still open)
   await page.getByLabel("Search cards").fill("Mabel");
   const big = await measure("c5-12");
-  const extra = { drag: big.drag - floor.drag, pan: big.pan - floor.pan };
+  // How fast this machine runs the app's own code: every strand of the big board, 20 times
+  // over, in 5 rounds; the quickest round counts (a busy moment only ever slows one), ×5.
+  const calib = await page.evaluate(() => {
+    const st = (window as unknown as { heddleCanvas: { store: { allValues(f: string): string[] } } }).heddleCanvas.store;
+    const fields = ["tags", "characters", "locations", "status"];
+    for (const f of fields) st.allValues(f); // warm up
+    let best = Infinity;
+    for (let round = 0; round < 5; round++) {
+      const t0 = performance.now();
+      for (let i = 0; i < 20; i++) for (const f of fields) st.allValues(f);
+      best = Math.min(best, performance.now() - t0);
+    }
+    return best * 5;
+  });
+  const extra = { drag: (big.dragWork - floor.dragWork) / calib, pan: (big.panWork - floor.panWork) / calib };
   const r = (v: number) => Math.round(v * 10) / 10;
-  console.log("PERF UI", JSON.stringify({ floorDrag: r(floor.drag), floorPan: r(floor.pan), drag: r(big.drag), pan: r(big.pan) }));
-  // Re-rendering the page on every step cost about a frame more per step (2026-11-16).
-  expect(extra.drag).toBeLessThan(12);
-  expect(extra.pan).toBeLessThan(12);
+  console.log("PERF UI", JSON.stringify({
+    floorDrag: r(floor.drag), floorPan: r(floor.pan), drag: r(big.drag), pan: r(big.pan), // wall clock
+    floorDragWork: r(floor.dragWork), floorPanWork: r(floor.panWork), dragWork: r(big.dragWork), panWork: r(big.panWork),
+    calib: r(calib), dragRatio: Math.round(extra.drag * 1000) / 1000, panRatio: Math.round(extra.pan * 1000) / 1000,
+  }));
+  // Measured 2026-11-17 (Chromium, Windows): 0.20–0.22 / 0.10 now, 0.23–0.24 / 0.09–0.11 with
+  // the CPU slowed 4×; re-rendering the page on every step (before "render pass", 2026-11-16)
+  // gave 0.75–0.82 / 0.60–0.66.
+  expect(extra.drag).toBeLessThan(0.45);
+  expect(extra.pan).toBeLessThan(0.3);
 });
