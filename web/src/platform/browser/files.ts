@@ -45,15 +45,42 @@ async function pickBoard(): Promise<PickedFile | null> {
       throw e;
     }
   }
-  const file = await new Promise<File | null>((resolve) => {
+  const file = await pickWithInput();
+  return file ? { ref: null, fileName: file.name, text: await file.text() } : null;
+}
+
+/** How long a "cancel" waits for a "change" that may follow it before it counts. */
+export const CANCEL_GRACE_MS = 1000;
+
+/** The file picker of browsers without the File System Access API (Firefox, Safari): a
+ *  hidden file input. It's put in the page while open, since Firefox may not deliver
+ *  "change" to an input that isn't in a document. And a "cancel" isn't taken at its word
+ *  straight away: Firefox may send one before the chosen file arrives (suspected from
+ *  Playwright's Firefox, where opening a file failed), so a file that comes within
+ *  CANCEL_GRACE_MS still wins. Resolves null if the picker is closed without a file. */
+export function pickWithInput(): Promise<File | null> {
+  return new Promise<File | null>((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json,application/json";
-    input.addEventListener("change", () => resolve(input.files?.[0] ?? null), { once: true });
-    input.addEventListener("cancel", () => resolve(null), { once: true });
+    input.style.display = "none";
+    document.body.append(input);
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (file: File | null) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      input.remove();
+      resolve(file);
+    };
+    input.addEventListener("change", () => finish(input.files?.[0] ?? null));
+    input.addEventListener("cancel", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => finish(input.files?.[0] ?? null), CANCEL_GRACE_MS);
+    });
     input.click();
   });
-  return file ? { ref: null, fileName: file.name, text: await file.text() } : null;
 }
 
 /** May this page use the file (asking, if `ask`, which needs a user's click)? */
