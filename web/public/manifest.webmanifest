@@ -1,7 +1,7 @@
 {
   "name": "Heddle",
   "short_name": "Heddle",
-  "description": "Map branching and converging story paths: cards on a canvas, joined by arrows.",
+  "description": "Narrative. Planning. Organization. Weave them together.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

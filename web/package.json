@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
-  "description": "Heddle: map branching and converging story paths.",
+  "description": "Heddle: narrative, planning, organization. Weave them together.",
   "author": "Joshua",
   "homepage": "https://github.com/josh-logue/Heddle",
   "main": "desktop/main.ts",

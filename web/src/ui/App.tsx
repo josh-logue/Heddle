@@ -1188,7 +1188,7 @@ export function App() {
         {!store && (
           <section className="welcome">
             <h1>Heddle</h1>
-            <p>Map branching and converging story paths: cards on a canvas, joined by arrows.</p>
+            <p>Narrative. Planning. Organization. Weave them together.</p>
             <p className="muted">
               Boards stay on your computer: nothing is uploaded. This browser version does what the desktop app does,
               apart from showing strand pictures. Once visited it works offline, and Chrome or Edge can install it as
