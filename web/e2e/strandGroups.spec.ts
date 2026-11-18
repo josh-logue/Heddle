@@ -41,6 +41,18 @@ function cardAt(page: Page, id: string) {
   }, id);
 }
 
+/** A card's middle once the board has settled: the same place over two animation frames. */
+async function settledCardAt(page: Page, id: string) {
+  const frames = () => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  let last = await cardAt(page, id);
+  for (;;) {
+    await frames();
+    const now = await cardAt(page, id);
+    if (now.x === last.x && now.y === last.y) return now;
+    last = now;
+  }
+}
+
 void store; // (documents the shape page.evaluate reaches)
 
 test("makes a strand group from picked strands and edits it in the Strands panel", async ({ page }) => {
@@ -104,12 +116,14 @@ test("adds a strand group to cards by dragging, from the right-click menu and in
   await makeGroup(page, "Harbour folk", ["Old Hesk", "The Tidewright"]);
   await page.keyboard.press("Control+Shift+B");
   const panel = page.getByRole("tabpanel", { name: "Strands" });
+  const group = panel.getByRole("option", { name: "Strand group Harbour folk" });
 
-  // Drag the strand group onto a card.
-  const target = await cardAt(page, "hall");
+  // Drag the strand group onto a card. Opening the panel narrows the board, which re-centres
+  // a frame or two later and moves the card, so measure it only once it has stopped moving.
+  await expect(group).toBeVisible();
+  const target = await settledCardAt(page, "hall");
   const box = (await page.locator(".board-canvas").boundingBox())!;
-  await panel.getByRole("option", { name: "Strand group Harbour folk" })
-    .dragTo(page.locator(".board-canvas"), { targetPosition: { x: target.x - box.x, y: target.y - box.y } });
+  await group.dragTo(page.locator(".board-canvas"), { targetPosition: { x: target.x - box.x, y: target.y - box.y } });
   expect(await characters(page, "hall")).toEqual(["Mira Fenn", "Captain Ilse Varn", "Old Hesk", "The Tidewright"]);
   await page.keyboard.press("Control+z");
   expect(await characters(page, "hall")).toEqual(["Mira Fenn", "Captain Ilse Varn"]);
